@@ -1,0 +1,15 @@
+{
+  "name": "seedline",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Unofficial listening app for messages streamed from Living Seed Gboko's public Mixlr channel.",
+  "scripts": {
+    "test:unit": "node tests/unit.test.mjs",
+    "test:e2e": "node tests/e2e.test.mjs",
+    "catalog": "node tools/build-catalog.mjs"
+  },
+  "devDependencies": {
+    "playwright": "*"
+  }
+}
