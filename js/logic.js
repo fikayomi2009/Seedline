@@ -1,10 +1,32 @@
 // Pure logic shared by the app, the catalog generator and the unit tests.
 // No DOM access in this file.
 
+// ---------- Sources ----------
+// Every place Seedline streams audio from. Audio always plays from the original public host.
+// type: mixlr | podcast | sermonindex.  label: official | community.
+export const SOURCES = [
+  { key: 'ls-gboko', type: 'mixlr', label: 'official', name: 'Living Seed Gboko (Mixlr)', short: 'Living Seed Gboko', channel: 'living-seed-gboko', idPrefix: 'mx:', home: 'https://living-seed-gboko.mixlr.com/' },
+  { key: 'ph-abuja', type: 'mixlr', label: 'official', name: 'Peace House Abuja (Mixlr)', short: 'Peace House Abuja', channel: 'peacehouseabuja', idPrefix: 'mxa:', home: 'https://peacehouseabuja.mixlr.com/' },
+  { key: 'pod-temi', type: 'podcast', label: 'community', name: "Bro Gbile Akanni`s Messages (community podcast, unofficial)", short: 'Community podcast', feed: 'https://anchor.fm/s/fc980da8/podcast/rss', filter: 'all', home: 'https://podcasts.apple.com/us/podcast/bro-gbile-akanni-s-messages/id1781023610' },
+  { key: 'pod-eagle', type: 'podcast', label: 'community', name: "God's Eagle Ministries podcast (community, unofficial)", short: "God's Eagle podcast", feed: 'https://anchor.fm/s/18271b00/podcast/rss', filter: 'gbile-only', home: 'https://podcasts.apple.com/us/podcast/ambassador-monday-o-ogbe-gods-eagle-ministries-podcast/id1504998241' },
+  { key: 'pod-maranatha', type: 'podcast', label: 'community', name: 'Maranatha Teaching Podcast (community, unofficial)', short: 'Maranatha podcast', feed: 'https://rss.buzzsprout.com/1857554.rss', filter: 'gbile-only', home: 'https://podcasts.apple.com/us/podcast/maranatha-teaching-podcast/id1587098876' },
+  { key: 'pod-cmirror', type: 'podcast', label: 'community', name: 'Christian Mirror Podcast (community, unofficial)', short: 'Christian Mirror podcast', feed: 'https://anchor.fm/s/89e1cac4/podcast/rss', filter: 'gbile-only', home: 'https://podcasts.apple.com/us/podcast/christian-mirror-podcast/id1864330431' },
+  { key: 'pod-kgm', type: 'podcast', label: 'community', name: 'Kingdom Grace Media podcast (community, unofficial)', short: 'Kingdom Grace podcast', feed: 'https://anchor.fm/s/2f765460/podcast/rss', filter: 'gbile-only', home: 'https://podcasts.apple.com/us/podcast/kingdom-grace-media-share4christ/id1526571935' },
+  { key: 'sermonindex', type: 'sermonindex', label: 'community', name: 'SermonIndex (third-party sermon archive)', short: 'SermonIndex', speakerPage: 'https://sermonindex.net/speakers/gbile-akanni/', home: 'https://sermonindex.net/speakers/gbile-akanni/' },
+];
+export const SOURCE_BY_KEY = new Map(SOURCES.map((s) => [s.key, s]));
+export const MIXLR_SOURCES = SOURCES.filter((s) => s.type === 'mixlr');
+export const SOURCE_RANK = new Map(SOURCES.map((s, i) => [s.key, i]));
+
+export const mixlrListUrl = (channel, page = 1) =>
+  `https://apicdn.mixlr.com/v3/channels/${channel}/recordings?page%5Bnumber%5D=${page}&page%5Bsize%5D=50`;
+export const mixlrPageUrl = (channel, id) => `https://${channel}.mixlr.com/recordings/${id}`;
+export const mixlrSourceForId = (id) => MIXLR_SOURCES.find((s) => String(id).startsWith(s.idPrefix)) || null;
+
+// Back-compat names for the original single channel.
 export const MIXLR_CHANNEL = 'living-seed-gboko';
-export const MIXLR_LIST_URL =
-  'https://apicdn.mixlr.com/v3/channels/living-seed-gboko/recordings?page%5Bnumber%5D=1&page%5Bsize%5D=50';
-export const MIXLR_PAGE_URL = (id) => `https://living-seed-gboko.mixlr.com/recordings/${id}`;
+export const MIXLR_LIST_URL = mixlrListUrl(MIXLR_CHANNEL);
+export const MIXLR_PAGE_URL = (id) => mixlrPageUrl(MIXLR_CHANNEL, id);
 export const SOURCE_NAME = 'Living Seed Gboko (Mixlr)';
 
 // Recordings shorter than this are test/blank uploads on the channel (0-63 s clips
@@ -37,7 +59,7 @@ export function categorise(title) {
 }
 
 export function yearOf(iso) {
-  const m = /^(\d{4})-\d{2}-\d{2}/.exec(iso || '');
+  const m = /(\d{4})-\d{2}-\d{2}/.exec(iso || '');
   return m ? Number(m[1]) : null;
 }
 
@@ -48,6 +70,8 @@ export function parseSeries(title, createdAt) {
   if (m) return { series: titleCase(m[2]), episode: Number(m[1]), subtitle: m[3].trim() };
   m = /^Bible Study\s*(\d+)\s*:\s*(.+)$/i.exec(t);
   if (m) return { series: 'Bible Study', episode: Number(m[1]), subtitle: m[2].trim() };
+  m = /\b(MLR|SAYCO|CLR)[\s,._]*(20\d\d)\b/i.exec(t);
+  if (m && !/^MLR\b/i.test(t)) return { series: `${m[1].toUpperCase()} ${m[2]}`, episode: null, subtitle: null };
   if (/^MLR\b/i.test(t)) {
     const y = (/\b(20\d\d)\b/.exec(t) || [])[1] || yearOf(createdAt);
     return { series: `MLR ${y}`, episode: null, subtitle: null };
@@ -73,46 +97,179 @@ export function isPlayableRecording(r) {
   return a.access_level === 'public' && Number(a.duration) >= MIN_DURATION_SECS;
 }
 
+// Who the title names as speaker. Only what the title says; nothing guessed.
+export function speakerFromTitle(title, fallback) {
+  const t = String(title || '');
+  const otherSpeaker = /\bby\s+(?!(bro\.?\s*|brother\s*)?gbile)[a-z]+\s+[a-z]+/i.test(t) && !/\bby\s+(bro\.?\s*|brother\s*)?gbile/i.test(t);
+  if (/gbile/i.test(t) && !otherSpeaker) return 'Bro Gbile Akanni';
+  const m = /\bby\s+(sade akanni)\b|\.{2,}\s*(sade akanni)\b/i.exec(t);
+  if (m) return 'Sade Akanni (named in title)';
+  return fallback;
+}
+// Mixed podcast feeds: keep an episode only when its title clearly credits Bro Gbile Akanni as the speaker.
+const ATTRIB = /\bby\s+(bro\.?\s*|brother\s*)?gbile\s+akann?i|gbile akann?i[`'’]?s?\s+messages|^\s*(bro\.?|brother)\s+gbile\s+akann?i\b|(\|\||\s-|\/\/)\s*(bro\.?\s*|brother\s*)?gbile\s+akann?i/i;
+export function podcastKeep(src, title) {
+  if (src.filter === 'all') return true;
+  return ATTRIB.test(title) && speakerFromTitle(title, '') === 'Bro Gbile Akanni';
+}
+export const SPEAKER_NOT_STATED = 'Living Seed / Peace House (speaker not stated)';
+
 // Turn one Mixlr API recording into a catalog entry (no audio URL - those expire).
-export function catalogEntryFromMixlr(r) {
+export function catalogEntryFromMixlr(r, source = MIXLR_SOURCES[0]) {
   const a = r.attributes;
   const s = parseSeries(a.title, a.created_at);
   const art = (a.media && a.media.artwork && a.media.artwork.image) || {};
   return {
-    id: 'mx:' + r.id,
+    id: source.idPrefix + r.id,
     mixlrId: String(r.id),
+    channel: source.channel,
     title: (a.title || '').trim(),
     genericTitle: isGenericTitle(a.title),
+    speaker: speakerFromTitle(a.title, SPEAKER_NOT_STATED),
     series: s.series,
     episode: s.episode,
     subtitle: s.subtitle,
-    date: (a.created_at || '').slice(0, 10),
+    date: dateOf(a.created_at),
     year: yearOf(a.created_at),
     duration: Number(a.duration) || 0,
     categories: categorise(a.title),
     categorySource: 'auto-tagged',
     artwork: art.small || null,
     artworkLarge: art.medium || art.large || null,
-    source: SOURCE_NAME,
-    sourceUrl: MIXLR_PAGE_URL(r.id),
+    source: source.name,
+    sourceKey: source.key,
+    sourceType: 'mixlr',
+    label: source.label,
+    sourceUrl: mixlrPageUrl(source.channel, r.id),
     kind: 'mixlr',
   };
 }
 
+export function dateOf(s) {
+  const m = /(\d{4}-\d{2}-\d{2})/.exec(s || '');
+  return m ? m[1] : '';
+}
+
 // Merge static catalog with live API results. Live wins for title/artwork; live adds new items.
-// Returns { items, urls } where urls maps id -> fresh audio url.
+// liveRecordings: Mixlr API records; each may carry `_source` (a source key) - default Living Seed Gboko.
+// Recordings already folded into another entry as an alternate only refresh their URL.
+// Returns { items, urls } where urls maps id -> fresh audio url (for main entries and alternates).
 export function mergeLibrary(catalogItems, liveRecordings) {
-  const byId = new Map(catalogItems.map((it) => [it.id, { ...it, inLive: false }]));
+  const byId = new Map(catalogItems.map((it) => [it.id, { ...it, inLive: it.kind === 'mixlr' ? false : undefined }]));
+  const altIds = new Set();
+  for (const it of catalogItems) for (const a of it.alts || []) altIds.add(a.id);
   const urls = {};
   for (const r of liveRecordings || []) {
     if (!isPlayableRecording(r)) continue;
-    const e = catalogEntryFromMixlr(r);
+    const src = SOURCE_BY_KEY.get(r._source) || MIXLR_SOURCES[0];
+    const e = catalogEntryFromMixlr(r, src);
+    if (r.attributes.url) urls[e.id] = r.attributes.url;
+    if (altIds.has(e.id)) continue;
     const old = byId.get(e.id);
     byId.set(e.id, old ? { ...old, title: e.title, artwork: e.artwork || old.artwork, artworkLarge: e.artworkLarge || old.artworkLarge, duration: e.duration || old.duration, inLive: true } : { ...e, inLive: true, notInCatalog: true });
-    if (r.attributes.url) urls[e.id] = r.attributes.url;
   }
-  const items = [...byId.values()].sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id.localeCompare(a.id));
+  const items = [...byId.values()].sort(byDateDesc);
   return { items, urls };
+}
+
+export const byDateDesc = (a, b) => (b.date || '').localeCompare(a.date || '') || (a.series || '').localeCompare(b.series || '') || (a.episode ?? 0) - (b.episode ?? 0) || a.id.localeCompare(b.id);
+
+// ---------- Multi-source helpers (used by the catalog builder and tests) ----------
+// Title with speaker credits and filler removed, for conservative matching.
+export function coreTitle(title) {
+  let t = String(title || '').toLowerCase().normalize('NFKD').replace(/[\u2018\u2019`]/g, "'");
+  t = t.replace(/^\s*\d{1,2}\s*-\s*/, '');                               // "10 - MESSAGE 3 ..."
+  t = t.replace(/\b(by\s+)?(bro\.?|brother)?\s*gbile\s+akann?i('?s)?(\s+messages?)?\b/g, ' ');
+  t = t.replace(/\bmessages?\s*:/g, ' ');
+  t = t.replace(/\bpt\.?\s*(\d)/g, 'part $1').replace(/\bpart\s*(\d+)/g, 'part $1');
+  t = t.replace(/\b(by|bro|brother)\s*$/g, ' ');
+  t = t.replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  t = t.replace(/^(by|bro|brother)\s+/, '').replace(/\s+(by|bro|brother)$/, '');
+  return t;
+}
+
+const GENERIC_CORES = /^(bible study( with)?( w)?|online bible study saturdays with|bible study part \d+|morning broadcast|evening broadcast|morning session|discipleship class|devotion \d*|couples testimony|prayer uproar tips)?$/;
+export function isGenericCore(core) {
+  return !core || core.length < 12 || GENERIC_CORES.test(core) || / on mixlr$| live audio$/.test(core);
+}
+
+// Same recording? Exact core-title match AND durations within max(90 s, 3%). Conservative on purpose:
+// two different preachings with one title (common) must not merge.
+export function sameRecording(a, b) {
+  const ca = coreTitle(a.title), cb = coreTitle(b.title);
+  if (isGenericCore(ca) || ca !== cb) return false;
+  if (!a.duration || !b.duration) return false;
+  // Two entries from the SAME source are only one recording if they are an exact re-post.
+  if (a.sourceKey && a.sourceKey === b.sourceKey) return Math.abs(a.duration - b.duration) <= 2;
+  return Math.abs(a.duration - b.duration) <= Math.max(90, 0.03 * Math.max(a.duration, b.duration));
+}
+
+const altOf = (it) => ({ id: it.id, source: it.source, sourceKey: it.sourceKey, sourceType: it.sourceType, label: it.label, sourceUrl: it.sourceUrl, audioUrl: it.audioUrl || null, channel: it.channel || null, mixlrId: it.mixlrId || null, title: it.title, duration: it.duration });
+
+// Fold duplicates into one entry with `alts`, preferring official sources, then source order.
+export function dedupe(items) {
+  const rank = (it) => (it.label === 'official' ? 0 : 100) + (SOURCE_RANK.get(it.sourceKey) ?? 50);
+  const sorted = items.slice().sort((a, b) => rank(a) - rank(b) || (a.date || '').localeCompare(b.date || '') || a.id.localeCompare(b.id));
+  const out = [];
+  const byCore = new Map();
+  let merged = 0;
+  for (const it of sorted) {
+    const core = coreTitle(it.title);
+    const cands = isGenericCore(core) ? [] : byCore.get(core) || [];
+    const hit = cands.find((c) => sameRecording(c, it));
+    if (hit) {
+      hit.alts = hit.alts || [];
+      hit.alts.push(altOf(it));
+      if (!hit.artwork && it.artwork) { hit.artwork = it.artwork; hit.artworkLarge = it.artworkLarge; }
+      merged++;
+      continue;
+    }
+    const copy = { ...it };
+    out.push(copy);
+    if (!isGenericCore(core)) { if (!byCore.has(core)) byCore.set(core, []); byCore.get(core).push(copy); }
+  }
+  return { items: out.sort(byDateDesc), merged };
+}
+
+// "Bible Study 19: Devotions Of A Disciple - ..." -> { n: 19, series: 'devotions of a disciple' }
+export function bibleStudyKey(title) {
+  const m = /^\s*bible study\s*(\d+)\s*[:\-–]\s*(.+)$/i.exec(String(title || ''));
+  if (!m) return null;
+  const rest = coreTitle(m[2].split(/\s[-–]\s/).filter((p) => !/gbile/i.test(p))[0] || '');
+  return rest ? { n: Number(m[1]), series: rest } : null;
+}
+
+// Conservative audio <-> YouTube matching. Returns Map(audioId -> youtube item).
+// A match needs either the same non-generic core title (unique on both sides), or the same
+// "Bible Study N" number AND the same series name (unique on the YouTube side).
+export function matchYouTube(audioItems, ytItems) {
+  const ytByCore = new Map(), ytByBS = new Map();
+  for (const y of ytItems) {
+    const c = coreTitle(y.title);
+    if (!isGenericCore(c)) ytByCore.set(c, ytByCore.has(c) ? null : y);
+    const k = bibleStudyKey(y.title);
+    if (k) { const kk = k.n + '|' + k.series; ytByBS.set(kk, ytByBS.has(kk) ? null : y); }
+  }
+  const audioCoreCount = new Map();
+  for (const a of audioItems) { const c = coreTitle(a.title); audioCoreCount.set(c, (audioCoreCount.get(c) || 0) + 1); }
+  const out = new Map();
+  for (const a of audioItems) {
+    const c = coreTitle(a.title);
+    let y = !isGenericCore(c) && audioCoreCount.get(c) === 1 ? ytByCore.get(c) : null;
+    if (!y) { const k = bibleStudyKey(a.title); if (k) y = ytByBS.get(k.n + '|' + k.series) || null; }
+    if (y) out.set(a.id, y);
+  }
+  return out;
+}
+
+// Series from "Part N" titles (only kept by the builder when 2+ parts share the name).
+export function partSeries(title) {
+  const t = String(title || '');
+  const m = /^(.*?)\s*(?:[-–(,:]|\/\/)?\s*\b(?:part|pt)\.?\s*(\d+)\b/i.exec(t.replace(/^bro\.? gbile akanni\s*\/\/\s*/i, ''));
+  if (!m) return null;
+  let name = m[1].replace(/\s*(?:[-–(,|]|by)\s*(bro\.?\s*|brother\s*)?gbile akann?i\s*$/i, '').replace(/[\s\-–(,:/]+$/, '').trim();
+  if (name.length < 6) return null;
+  return { series: name, episode: Number(m[2]) };
 }
 
 // Apply admin overrides (from Supabase) onto items.
@@ -180,7 +337,7 @@ export function searchItems(items, query) {
   const words = q.split(' ');
   const scored = [];
   for (const it of items) {
-    const hay = normalise([it.title, it.series, it.subtitle, (it.categories || []).join(' '), it.year, it.source].join(' '));
+    const hay = normalise([it.title, it.series, it.subtitle, (it.categories || []).join(' '), it.year, it.source, it.speaker].join(' '));
     if (!words.every((w) => hay.includes(w))) continue;
     const t = normalise(it.title);
     let score = 0;

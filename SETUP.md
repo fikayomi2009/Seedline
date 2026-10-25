@@ -73,3 +73,27 @@ The anon key is meant to be public — the rules in `schema.sql` make sure anyon
 Open the app → **Admin** (link at the bottom of Home) → sign in with the email and password from step D.
 
 **About adding messages with a direct audio link:** only add audio you have **permission from the owner** to stream. The app shows those entries as "requires permission from the owner", and the database won't save a link unless the permission box is ticked.
+
+---
+
+## Part 3 — Updating the catalogue (all audio sources)
+
+`catalog.json` is built offline because podcast feeds and SermonIndex don't allow the app to read them directly (no CORS). The app still reads both Mixlr channels live every time it opens, so new Mixlr recordings show up without a rebuild.
+
+On a computer with Node 18+ (no packages needed):
+
+```bash
+node tools/build-catalog.mjs          # rebuild catalog.json + youtube.json
+node tools/build-catalog.mjs --check  # dry run: print what would change, write nothing
+node tests/unit.test.mjs              # quick checks
+node tests/verify-sources.mjs         # titles exact + audio URLs answering (needs internet)
+```
+
+What it does:
+- Reads every source listed in `SOURCES` in `js/logic.js`: the Mixlr channels (all public recordings of 60 s or more), the podcast RSS feeds (mixed feeds: only episodes whose title credits Bro Gbile Akanni), and the SermonIndex speaker page (each message page gives its own audio file URL; pages already in the catalogue are not re-fetched).
+- Folds duplicates together (strict title + length match), auto-tags topics, groups "Part N" series, and links audio ↔ YouTube where the match is clear.
+- **Idempotent**: if nothing changed upstream, both files stay byte-for-byte the same and it prints `unchanged`. So a daily job can run it and commit only files that changed.
+- If a source can't be reached, its entries from the previous `catalog.json` are kept (never dropped) and the script exits with code 2 and names the failed source.
+- It never downloads audio. It stores only titles, dates, lengths, artwork links, page links and the publisher's own audio URL (none for Mixlr, whose links expire).
+
+To add a source: add an entry to `SOURCES` in `js/logic.js` (Mixlr: `type: 'mixlr'`, `channel`, a new `idPrefix`; podcast: `type: 'podcast'`, `feed`, `filter: 'all'` or `'gbile-only'`, `label: 'community'` unless it's the ministry's own), run the builder, run the tests, then upload the changed files.

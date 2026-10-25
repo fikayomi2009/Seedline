@@ -67,12 +67,96 @@ t('time formatting & length parsing', () => {
   assert.equal(L.fmtTime(3725), '1:02:05'); assert.equal(L.fmtTime(65), '1:05');
   assert.equal(L.parseLength('1h 57m'), 7020); assert.equal(L.parseLength('1:02:03'), 3723);
 });
-t('catalog: every title matches the Mixlr snapshot exactly (no invented titles)', () => {
-  const snap = JSON.parse(fs.readFileSync(new URL('../catalog.json', import.meta.url)));
-  const ref = process.argv[2] ? JSON.parse(fs.readFileSync(process.argv[2])) : null;
-  if (!ref) return;
-  const titles = new Map(ref.map((r) => [ 'mx:' + r.id, r.attributes.title.trim() ]));
-  for (const it of snap.items) assert.equal(it.title, titles.get(it.id), it.id);
+const CAT = JSON.parse(fs.readFileSync(new URL('../catalog.json', import.meta.url)));
+t('catalog: multi-source shape (id prefix, source, label, playable reference)', () => {
+  assert.ok(CAT.items.length > 300, 'too few items');
+  const keys = new Set(L.SOURCES.map((s) => s.key));
+  for (const it of CAT.items) {
+    assert.ok(keys.has(it.sourceKey), 'bad source ' + it.id);
+    assert.ok(['official', 'community'].includes(it.label), it.id);
+    assert.ok(['mixlr', 'podcast', 'sermonindex'].includes(it.sourceType), it.id);
+    const s = L.SOURCE_BY_KEY.get(it.sourceKey);
+    if (s.type === 'mixlr') { assert.ok(it.id.startsWith(s.idPrefix) && it.mixlrId && !it.audioUrl, it.id); }
+    else { assert.ok(it.id.startsWith(s.key + ':') || it.id.startsWith('si:'), it.id); assert.match(it.audioUrl, /^https:\/\//, it.id); }
+    assert.ok(it.sourceUrl && /^https:\/\//.test(it.sourceUrl), 'no original link ' + it.id);
+    assert.ok(Array.isArray(it.categories) && it.categories.length, it.id);
+  }
+  // official sources are never shown as community or vice versa
+  for (const it of CAT.items) assert.equal(it.label, L.SOURCE_BY_KEY.get(it.sourceKey).label);
+  // no duplicate ids
+  assert.equal(new Set(CAT.items.map((i) => i.id)).size, CAT.items.length);
+});
+t('dedupe: same title + same length merges (official preferred); same title, different length does NOT', () => {
+  const mk = (id, sourceKey, title, duration) => ({ id, sourceKey, title, duration, label: L.SOURCE_BY_KEY.get(sourceKey).label, source: sourceKey, sourceType: L.SOURCE_BY_KEY.get(sourceKey).type, date: '2024-01-01' });
+  const r = L.dedupe([
+    mk('si:1', 'sermonindex', 'Competent But Incomplete', 5256),
+    mk('pod-temi:a', 'pod-temi', 'Competent But Incomplete By Bro Gbile Akanni', 5267),
+    mk('mxa:9', 'ph-abuja', 'Competent but Incomplete', 18847),            // different length -> separate
+    mk('mx:7', 'ls-gboko', 'The Great Invitation', 5000),
+    mk('pod-eagle:b', 'pod-eagle', 'Brother Gbile Akanni Messages: The Great Invitation', 5030), // -> alt of official
+    mk('si:2', 'sermonindex', 'Family Clinic 1', 6045),
+    mk('si:3', 'sermonindex', 'Family Clinic.1', 6205),                    // same source, not an exact repost -> separate
+    mk('mx:8', 'ls-gboko', 'LIVING SEED GBOKO on Mixlr', 3600),
+    mk('mx:9', 'ls-gboko', 'LIVING SEED GBOKO on Mixlr', 3600),            // generic titles never merge
+  ]);
+  assert.equal(r.items.length, 7);
+  assert.equal(r.merged, 2);
+  const inv = r.items.find((i) => i.id === 'mx:7');
+  assert.equal(inv.alts.length, 1); assert.equal(inv.alts[0].id, 'pod-eagle:b');
+  const cbi = r.items.find((i) => i.alts && i.alts.some((a) => a.id === 'si:1'));
+  assert.equal(cbi.id, 'pod-temi:a'); // community podcast ranks above SermonIndex in source order
+});
+t('dedupe applied to the real catalog: no main entry is also an alternate; alternates keep a playable reference', () => {
+  const main = new Set(CAT.items.map((i) => i.id));
+  for (const it of CAT.items) for (const a of it.alts || []) {
+    assert.ok(!main.has(a.id), 'alt also main ' + a.id);
+    assert.ok(a.audioUrl || a.mixlrId, 'alt without audio ' + a.id);
+    assert.ok(L.sameRecording(it, a), 'alt not same recording ' + a.id);
+  }
+});
+t('core titles and speaker attribution', () => {
+  assert.equal(L.coreTitle('Brother Gbile Akanni Messages: Bro Gbile Akanni Messages : Instructions To The Unmarried'), L.coreTitle('Instructions To The Unmarried By Bro Gbile Akanni'));
+  assert.equal(L.coreTitle('CONFESSION- PRACTICAL REPENTANCE PT 1 BY BRO GBILE AKANNI'), 'confession practical repentance part 1');
+  assert.equal(L.speakerFromTitle('09 - PRAYER UPROAR BY SADE AKANNI, MLR, Gbile Akanni MLR_2022', 'x'), 'Sade Akanni (named in title)');
+  assert.equal(L.speakerFromTitle('Possessing God by Gbile Akanni', 'x'), 'Bro Gbile Akanni');
+  assert.equal(L.speakerFromTitle('Sermon On The Mount', 'x'), 'x');
+});
+t('mixed podcast feeds keep only episodes credited to Bro Gbile', () => {
+  const eagle = L.SOURCE_BY_KEY.get('pod-eagle');
+  assert.ok(L.podcastKeep(eagle, '16 - MESSAGE 5 BY GBILE AKANNI, Ministers and Leadership Retreat Gboko MLR 2022'));
+  assert.ok(L.podcastKeep(eagle, "Brother Gbile Akanni Messages: You Are Not A Mistake"));
+  assert.ok(!L.podcastKeep(eagle, '15 - PRAYER TIPS BY SADE AKANNI, Ministers and Leadership Retreat Gboko, Gbile Akanni MLR 2022'));
+  assert.ok(!L.podcastKeep(eagle, '13 - MESSAGE 4 BY EMMANUEL AKHIMBE, Ministers and Leadership Retreat Gboko, Gbile Akanni MLR 2022'));
+  assert.ok(!L.podcastKeep(eagle, '17 - MINISTERIAL CHALLENGE, Ministers and Leadership Retreat, 2022, GBOKO, Gbile Akanni MLR_2022'));
+  assert.ok(!L.podcastKeep(eagle, 'Part 12 – Enough is Enough'));
+  for (const it of CAT.items.filter((i) => i.sourceKey === 'pod-eagle')) assert.ok(L.podcastKeep(eagle, it.title), it.title);
+});
+t('YouTube matching is conservative', () => {
+  const yt = [{ id: 'yt:1', title: 'Bible Study 19: Devotions Of A Disciple - Bro Gbile Akanni' }, { id: 'yt:2', title: 'Bible Study With Brother Gbile Akanni' }, { id: 'yt:3', title: 'Bible Study With Brother Gbile Akanni' }];
+  const m = L.matchYouTube([{ id: 'a', title: 'Bible Study 19:Devotions Of A Disciple - Introduction To Soul Winning' }, { id: 'b', title: 'Bible Study With Brother Gbile Akanni' }, { id: 'c', title: 'Bible Study 20:Devotions Of A Disciple - X' }], yt);
+  assert.equal(m.size, 1); assert.equal(m.get('a').id, 'yt:1');
+  const ytj = JSON.parse(fs.readFileSync(new URL('../youtube.json', import.meta.url)));
+  const linked = ytj.items.filter((v) => v.listenId);
+  for (const v of linked) { const it = CAT.items.find((i) => i.id === v.listenId); assert.ok(it && it.youtube && it.youtube.id === v.id, v.id); }
+  assert.equal(linked.length, CAT.stats.youtubeMatches);
+});
+t('multi-channel live merge: Abuja records get their own ids; alternates only refresh their URL', () => {
+  const cat = [{ id: 'mxa:5', mixlrId: '5', kind: 'mixlr', sourceKey: 'ph-abuja', title: 'X', date: '2020-01-01' }, { id: 'pod-temi:z', kind: 'podcast', title: 'Y', date: '2021-01-01', alts: [{ id: 'mx:77', sourceType: 'mixlr' }] }];
+  const live = [
+    { id: '5', _source: 'ph-abuja', attributes: { access_level: 'public', duration: 600, title: 'X', created_at: '2020-01-01T00:00:00Z', url: 'https://a/5.mp3' } },
+    { id: '77', _source: 'ls-gboko', attributes: { access_level: 'public', duration: 600, title: 'Y', created_at: '2021-01-01T00:00:00Z', url: 'https://a/77.mp3' } },
+  ];
+  const { items, urls } = L.mergeLibrary(cat, live);
+  assert.equal(items.length, 2);
+  assert.equal(urls['mxa:5'], 'https://a/5.mp3'); assert.equal(urls['mx:77'], 'https://a/77.mp3');
+  assert.ok(items.find((i) => i.id === 'mxa:5').inLive);
+  assert.equal(L.mixlrSourceForId('mxa:5').channel, 'peacehouseabuja');
+  assert.equal(L.mixlrSourceForId('mx:5').channel, 'living-seed-gboko');
+});
+t('series from "Part N" titles', () => {
+  assert.deepEqual(L.partSeries('Work While It Is Day Part 7 By Bro Gbile Akanni'), { series: 'Work While It Is Day', episode: 7 });
+  assert.deepEqual(L.partSeries('How to be an authentic winner - Bro Gbile Akanni (Part 5)'), { series: 'How to be an authentic winner', episode: 5 });
+  assert.equal(L.partSeries('Possessing God 2...Gbile Akanni'), null);
 });
 console.log(`\n${pass}/${pass + fail} unit tests passed`);
 process.exit(fail ? 1 : 0);

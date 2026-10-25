@@ -1,120 +1,156 @@
 {
-  "ranAt": "2026-10-25T18:45:45.852Z",
+  "ranAt": "2026-10-25T20:00:21.949Z",
   "browser": "156.0.8078.47",
   "results": [
     {
       "name": "library loads from the live Mixlr API",
       "ok": true,
-      "info": "87 recordings, 87 fresh audio URLs, 312 YouTube entries, 8 rows on Home",
-      "ms": 1919
+      "info": "422 messages ({\"pod-temi\":41,\"pod-maranatha\":10,\"pod-cmirror\":1,\"ls-gboko\":87,\"pod-eagle\":19,\"ph-abuja\":108,\"pod-kgm\":1,\"sermonindex\":155}), 195 fresh Mixlr URLs from 2 channels, 312 YouTube entries, 8 per-source sections on Home",
+      "ms": 2244
     },
     {
       "name": "first run: nothing falsely marked New",
       "ok": true,
-      "info": "No new messages since your last check (checked 06:45 PM).",
-      "ms": 6
+      "info": "No new messages since your last check (checked 07:59 PM).",
+      "ms": 5
     },
     {
       "name": "search is instant and filters by title/topic/series",
       "ok": true,
-      "info": "\"discipleship\" → 8 messages; \"MLR 2022\" → 4; nonsense → 0; YouTube links shown for last query: 0",
-      "ms": 97
+      "info": "\"discipleship\" → 18 messages; \"MLR 2022\" → 11; nonsense → 0; YouTube links shown for last query: 0",
+      "ms": 118
     },
     {
       "name": "play starts and audio currentTime advances (+Media Session metadata)",
       "ok": true,
-      "info": "playing mx:2552216 at 2.1s of 7083s; mediaSession title ok, 2 artwork sizes, state=playing",
-      "ms": 2618
+      "info": "playing pod-temi:4761387c10e2 at 2.2s of 3397s; mediaSession title ok, 2 artwork sizes, state=playing",
+      "ms": 2729
     },
     {
       "name": "seek via full-player slider",
       "ok": true,
-      "info": "jumped to 1201.2s and kept playing",
-      "ms": 1565
+      "info": "jumped to 1201.1s and kept playing",
+      "ms": 1331
     },
     {
       "name": "next / previous buttons",
       "ok": true,
-      "info": "next → index 1 (mx:1959484); prev restarts then returns to mx:2552216 (resumed at 1201s from saved progress)",
-      "ms": 5635
+      "info": "next → index 1 (pod-temi:59c66b216a35); prev restarts then returns to pod-temi:4761387c10e2 (resumed at 1201s from saved progress)",
+      "ms": 5407
     },
     {
       "name": "ended → auto-advance to next message",
       "ok": true,
-      "info": "mx:2552216 ended → mx:1959484 playing at 1.1s; finished item progress cleared: true",
-      "ms": 4768
+      "info": "pod-temi:4761387c10e2 ended → pod-temi:59c66b216a35 playing at 1.2s; finished item progress cleared: true",
+      "ms": 4526
     },
     {
       "name": "repeat one replays the same message on end",
       "ok": true,
-      "info": "same id mx:1959484 restarted at 0.1s; repeat cycled back to off",
-      "ms": 3101
+      "info": "same id pod-temi:59c66b216a35 restarted at 0.2s; repeat cycled back to off",
+      "ms": 3109
     },
     {
       "name": "shuffle keeps current track and reorders upcoming",
       "ok": true,
-      "info": "upcoming 85 shuffled, order restored when turned off",
-      "ms": 101
+      "info": "upcoming 420 shuffled, order restored when turned off",
+      "ms": 106
     },
     {
       "name": "queue view: reorder, remove, clear; add to queue / play next",
       "ok": true,
       "info": "reorder/remove/clear ok (current kept playing: true); add-to-queue and play-next ok",
-      "ms": 1330
+      "ms": 2265
     },
     {
       "name": "playlist create / add / rename / reorder / remove / play / delete",
       "ok": true,
       "info": "all playlist operations work through the UI; whole playlist played in order",
-      "ms": 3052
+      "ms": 3361
     },
     {
       "name": "favourites",
       "ok": true,
-      "info": "favourited mx:1246470; listed in Favourites",
-      "ms": 83
+      "info": "favourited pod-maranatha:b4f0a2e77742; listed in Favourites",
+      "ms": 99
     },
     {
       "name": "listening progress persists across reload and resumes",
       "ok": true,
-      "info": "saved 901s on pause; after reload it is first in Continue listening, mini player restored (\"LIVING SEED GBOKO's live audio…\"), resumed at 901s",
-      "ms": 4117
+      "info": "saved 901s on pause; after reload it is first in Continue listening, mini player restored (\"Work While It Is Day Part 4 By…\"), resumed at 901s",
+      "ms": 4090
     },
     {
       "name": "expired audio link is refreshed automatically",
       "ok": true,
       "info": "bad-signature URL failed (403), app fetched a fresh link from Mixlr and played",
-      "ms": 1806
+      "ms": 1595
     },
     {
       "name": "discover new: id removed from last-seen shows as New, mark seen clears it",
       "ok": true,
       "info": "mx:2552216 shown as New with badge (1); stays after \"Check for new messages\"; cleared by \"Mark all as seen\"",
-      "ms": 3204
+      "ms": 5263
     },
     {
       "name": "admin page says not configured",
       "ok": true,
       "info": "Not configured yet — see SETUP.md",
-      "ms": 16
+      "ms": 21
     },
     {
       "name": "YouTube section lists videos with Open on YouTube links",
       "ok": true,
       "info": "312 entries; first link https://www.youtube.com/watch?v=y55wT9DAysg",
-      "ms": 64
+      "ms": 71
     },
     {
       "name": "service worker registers and manifest is valid",
       "ok": true,
       "info": "SW activated; 19 shell files cached; 0 audio/Mixlr responses cached",
-      "ms": 75
+      "ms": 90
     },
     {
       "name": "Mixlr unreachable: saved list still shows, honest error, no fake playback",
       "ok": true,
-      "info": "87 saved titles listed; playing shows: \"Could not get the audio link from Mixlr right now. Check your connection and try again.\"",
-      "ms": 811
+      "info": "422 saved titles listed; Mixlr message shows: \"Could not get the audio link from Living Seed Gboko (Mixlr) right now. Check your connection and try again.\"; a podcast message still plays (pod-temi:4761387c10e2)",
+      "ms": 2249
+    },
+    {
+      "name": "one message from EVERY source plays (currentTime advances)",
+      "ok": true,
+      "info": "pod-temi: pod-temi:4761387c10e2 @1.7s from anchor.fm | pod-maranatha: pod-maranatha:fc8d25976b59 @1.7s from www.buzzsprout.com | pod-cmirror: pod-cmirror:56aec3bbae38 @1.7s from anchor.fm | ls-gboko: mx:2552216 @1.7s from mixlr-recordings-production.ebf9f54a7fe01f0688daaa8349c0bf72.r2.cloudflarestorage.com | pod-eagle: pod-eagle:04d83e401dbd @1.7s from anchor.fm | ph-abuja: mxa:1431512 @1.7s from mixlr-recordings-production.ebf9f54a7fe01f0688daaa8349c0bf72.r2.cloudflarestorage.com | pod-kgm: pod-kgm:d482e2516306 @1.7s from anchor.fm | sermonindex: si:23747 @1.7s from sermonindex1.b-cdn.net",
+      "ms": 15957
+    },
+    {
+      "name": "dedupe: duplicates listed once, alternates shown on the detail page",
+      "ok": true,
+      "info": "5 messages carry 5 alternate copies; none listed twice; detail shows: Also available from / ",
+      "ms": 37
+    },
+    {
+      "name": "player: failing static URL shows an honest error and offers the alternate source",
+      "ok": true,
+      "info": "error shown: \"This audio could not be played from Community podcast. The file may have moved or been removed by its publisher, or your connection dropped.\" → tapped \"Try God's Eagle podcast\" → playing from pod-eagle at 1.6s",
+      "ms": 2193
+    },
+    {
+      "name": "source filter chips (All messages + Search)",
+      "ok": true,
+      "info": "SermonIndex chip → 158 rows (badges e.g. Community podcast), none from other sources; search \"marriage\": all 22, SermonIndex 17, Peace House Abuja 2",
+      "ms": 977
+    },
+    {
+      "name": "auto-advance across sources (podcast → SermonIndex → Mixlr Abuja)",
+      "ok": true,
+      "info": "pod-temi:4761387c10e2 → si:23747@1.0s → mxa:1431512@1.2s",
+      "ms": 8478
+    },
+    {
+      "name": "YouTube: matched entries offer \"Listen in app\"",
+      "ok": true,
+      "info": "1 YouTube video(s) matched; \"Bible Study 19: Devotions Of A Disciple - Bro Gbile Akanni\" → plays mx:2552216; detail shows \"Also on YouTube: Bible Study 19: Devotions Of A Disciple - B\"",
+      "ms": 1777
     },
     {
       "name": "no uncaught page errors",

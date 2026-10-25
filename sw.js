@@ -1,5 +1,5 @@
 // Seedline service worker: caches the app shell only. Audio is NEVER cached.
-const VERSION = 'seedline-v1';
+const VERSION = 'seedline-v2';
 const SHELL = [
   './', './index.html', './styles.css', './config.js', './manifest.webmanifest',
   './js/app.js', './js/logic.js', './js/data.js', './js/player.js', './js/store.js',

@@ -197,3 +197,24 @@ input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 
 [hidden] { display: none !important; }
 @media (min-width: 700px) { .cat-grid { grid-template-columns: repeat(3, 1fr); } .card, .card-art { width: 160px; } .card-art { height: 160px; } }
 .sub a svg { width: 14px; height: 14px; vertical-align: -2px; }
+
+/* ---- multi-source ---- */
+.src { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-right: 6px; vertical-align: 1px; background: #2b2f38; color: #c9cfdb; letter-spacing: .01em; }
+.src.off { background: #3a2e17; color: var(--accent); }
+.src-podcast { background: #23303a; color: #9fd0f2; }
+.src-sermonindex { background: #2c2638; color: #cdb8f5; }
+.src.alt { background: transparent; color: var(--muted); border: 1px solid #3a3f4a; }
+.lbl { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; border: 1px solid #3a3f4a; color: var(--muted); }
+.lbl.official { border-color: #6b5426; color: var(--accent); }
+.src-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.src-chips::-webkit-scrollbar { display: none; }
+.src-chips .chip { flex: none; white-space: nowrap; }
+.chip small { opacity: .7; margin-left: 6px; font-size: 12px; }
+.yt-btns { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.yt-btns .btn { justify-content: center; }
+.alts { margin-top: 10px; }
+.sub.small { font-size: 12px; }
+.mini-in .btn.small { flex: none; }
+.err-line .btn { margin-left: 6px; }
+.prose ul { padding-left: 18px; }
+.prose li { margin: 6px 0; }

@@ -1,7 +1,8 @@
 // One <audio> element, a continuous queue, Media Session (lock-screen) controls,
 // and per-device saving of position, queue, volume, shuffle and repeat.
 import * as store from './store.js';
-import { state as lib, audioUrlFor, refreshUrl, markSeen } from './data.js';
+import { state as lib, audioUrlFor, refreshUrl, markSeen, isMixlrRef } from './data.js';
+import { SOURCE_BY_KEY } from './logic.js';
 import { nextIndex, prevIndex, shuffled, moveItem } from './logic.js';
 
 export const audio = new Audio();
@@ -20,6 +21,8 @@ export const P = {
   loadedId: null,
   loading: false,
   error: null,
+  altOffer: null,  // { id, alt, idx } when the current message has another source to try
+  srcIdx: {},      // id -> -1 (main source) or index into item.alts, for the copy being played
 };
 audio.volume = P.volume;
 
@@ -53,27 +56,41 @@ function saveProgress(force) {
 
 // ---------- loading & playing ----------
 let retriedFor = null;
+const shortName = (x) => (SOURCE_BY_KEY.get(x && x.sourceKey) || {}).short || (x && x.source) || 'the source';
+// The copy of the current message being played: the main entry or one of its alternates.
+const chosen = (it) => { const i = P.srcIdx[it.id] ?? -1; return i >= 0 && it.alts && it.alts[i] ? it.alts[i] : null; };
+function offerNextAlt(it) {
+  const i = P.srcIdx[it.id] ?? -1;
+  const alts = it.alts || [];
+  P.altOffer = i + 1 < alts.length ? { id: it.id, idx: i + 1, alt: alts[i + 1], name: shortName(alts[i + 1]) } : null;
+}
 
-async function loadIndex(i, { autoplay = true, resume = true } = {}) {
+async function loadIndex(i, { autoplay = true, resume = true, keepSource = false } = {}) {
   if (i < 0 || i >= P.queue.length) return;
   saveProgress(true);
   P.index = i;
   P.error = null;
+  P.altOffer = null;
   persist();
   const it = current();
   if (!it) { P.error = 'This message is no longer in the library.'; emit(); return; }
+  if (!keepSource) P.srcIdx[it.id] = -1;
   markSeen(it.id);
   updateMediaSession(it);
-  let url = audioUrlFor(it);
+  const alt = chosen(it);
+  const ref = alt || it;
+  let url = audioUrlFor(it, alt);
   P.loading = true;
   emit();
-  if (!url && it.kind === 'mixlr') {
-    try { url = await refreshUrl(it.id); } catch (e) { /* offline */ }
+  if (!url && isMixlrRef(ref)) {
+    try { url = await refreshUrl(ref.id); } catch (e) { /* offline */ }
   }
   if (P.queue[P.index] !== it.id) return; // user moved on meanwhile
   if (!url) {
     P.loading = false;
-    P.error = navigator.onLine === false ? 'You are offline. Audio streams from Mixlr and needs internet.' : 'Could not get the audio link from Mixlr right now. Check your connection and try again.';
+    if (isMixlrRef(ref)) P.error = navigator.onLine === false ? 'You are offline. Audio streams from the original source and needs internet.' : `Could not get the audio link from ${shortName(ref)} (Mixlr) right now. Check your connection and try again.`;
+    else P.error = `No audio link is listed for this message on ${shortName(ref)}.`;
+    offerNextAlt(it);
     emit();
     return;
   }
@@ -87,11 +104,20 @@ async function loadIndex(i, { autoplay = true, resume = true } = {}) {
     audio.addEventListener('loadedmetadata', seekOnce, { once: true });
   }
   if (autoplay) {
-    try { await audio.play(); } catch (e) { if (e.name !== 'AbortError') { P.error = e.name === 'NotAllowedError' ? 'Tap play to start.' : 'Playback failed: ' + e.message; } }
+    try { await audio.play(); } catch (e) { if (e.name !== 'AbortError' && e.name !== 'NotSupportedError') { P.error = e.name === 'NotAllowedError' ? 'Tap play to start.' : 'Playback failed: ' + e.message; } }
   }
   P.loading = false;
   emit();
 }
+
+// Play the current message from its next alternate source (after an error).
+export function tryAlt() {
+  const it = current();
+  if (!it || !P.altOffer || P.altOffer.id !== it.id) return;
+  P.srcIdx[it.id] = P.altOffer.idx;
+  return loadIndex(P.index, { keepSource: true });
+}
+export const playingSource = () => { const it = current(); return it ? (chosen(it) || it) : null; };
 
 export function playQueue(ids, start = 0) {
   ids = ids.filter(playable);
@@ -221,13 +247,14 @@ audio.addEventListener('ended', () => {
 });
 audio.addEventListener('error', async () => {
   const it = current();
-  if (!it || !audio.src) return;
+  if (!it || !audio.src || P.loadedId !== it.id) return;
+  const ref = chosen(it) || it;
   // Signed Mixlr links expire. Fetch a fresh one once, then continue from the same spot.
-  if (it.kind === 'mixlr' && retriedFor !== it.id) {
-    retriedFor = it.id;
+  if (isMixlrRef(ref) && retriedFor !== ref.id) {
+    retriedFor = ref.id;
     const pos = audio.currentTime || (store.progress.get(it.id) || {}).pos || 0;
     try {
-      const url = await refreshUrl(it.id);
+      const url = await refreshUrl(ref.id);
       if (url && P.queue[P.index] === it.id) {
         audio.src = url;
         audio.addEventListener('loadedmetadata', () => { if (pos) audio.currentTime = pos; }, { once: true });
@@ -237,7 +264,10 @@ audio.addEventListener('error', async () => {
     } catch (e) { /* fall through */ }
   }
   P.loading = false;
-  P.error = 'This audio could not be played. It may have been removed from Mixlr, or your connection dropped.';
+  P.error = isMixlrRef(ref)
+    ? `This audio could not be played from ${shortName(ref)}. It may have been removed from Mixlr, or your connection dropped.`
+    : `This audio could not be played from ${shortName(ref)}. The file may have moved or been removed by its publisher, or your connection dropped.`;
+  offerNextAlt(it);
   emit();
 });
 window.addEventListener('pagehide', () => saveProgress(true));
@@ -252,7 +282,7 @@ function updateMediaSession(it) {
     const abs = (u) => new URL(u, location.href).href;
     ms.metadata = new MediaMetadata({
       title: it.title,
-      artist: it.source || 'Living Seed Gboko (Mixlr)',
+      artist: it.speaker && /Gbile/.test(it.speaker) ? 'Bro Gbile Akanni' : (it.source || 'Seedline'),
       album: it.series || 'Seedline',
       artwork: art
         ? [{ src: it.artwork || art, sizes: '256x256', type: 'image/jpeg' }, { src: art, sizes: '1024x1024', type: 'image/jpeg' }]

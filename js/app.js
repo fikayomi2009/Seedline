@@ -3,13 +3,17 @@ import * as store from './store.js';
 import { state, onChange, loadLibrary, checkLive, markAllSeen } from './data.js';
 import * as player from './player.js';
 import { P, audio } from './player.js';
-import { CATEGORIES, UNCATEGORISED, searchItems, normalise, slug, fmtTime, fmtDuration } from './logic.js';
+import { CATEGORIES, UNCATEGORISED, SOURCES, SOURCE_BY_KEY, searchItems, normalise, slug, fmtTime, fmtDuration } from './logic.js';
 import { renderAdmin } from './admin.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const view = $('#view');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const FOOTER = 'Unofficial listening app. Audio streams from Living Seed Gboko\'s public Mixlr channel; all rights belong to their owners.';
+const FOOTER = 'Unofficial listening app. Audio streams straight from each original public source (Mixlr channels, podcast hosts, SermonIndex); nothing is copied or re-hosted. All rights belong to their owners.';
+const srcInfo = (k) => SOURCE_BY_KEY.get(k) || { key: k, short: 'Added by admin', name: 'Added by admin', label: 'community', type: 'admin' };
+const inSource = (it, k) => (it.sourceKey || (it.kind === 'mixlr' ? 'ls-gboko' : it.kind)) === k || (it.alts || []).some((a) => a.sourceKey === k);
+const srcBadge = (it) => it.sourceKey ? `<b class="src src-${esc(it.sourceType || it.kind)}${it.label === 'official' ? ' off' : ''}" data-testid="src-badge">${esc(srcInfo(it.sourceKey).short)}</b>` : '';
+const labelText = (l) => l === 'official' ? 'Official ministry channel' : 'Community upload (unofficial)';
 
 // Lists rendered on screen, so a tap can play "this row and the rest of its list".
 let lists = {};
@@ -86,7 +90,7 @@ function row(it, listKey, i, opts = {}) {
     <button class="row-main" data-act="play" data-list="${listKey}" data-i="${i}" aria-label="Play ${esc(it.title)}">
       ${art(it)}
       <span class="row-text"><span class="row-title">${isNew ? '<b class="badge">New</b>' : ''}${esc(it.title)}</span>
-      <span class="row-meta">${it.genericTitle ? '<em>Untitled on Mixlr</em> · ' : ''}${it.kind === 'admin' ? '<em>Added by admin</em> · ' : ''}${meta(it)}</span>${progBar(it)}</span>
+      <span class="row-meta">${srcBadge(it)}${(it.alts || []).length ? `<b class="src alt" title="Also available from other sources">+${it.alts.length}</b>` : ''}${it.genericTitle ? '<em>Untitled on Mixlr</em> · ' : ''}${it.kind === 'admin' ? '<em>Added by admin</em> · ' : ''}${meta(it)}</span>${progBar(it)}</span>
     </button>
     ${opts.extra || ''}
     <button class="icon-btn" data-act="more" data-id="${esc(it.id)}" aria-label="More options">${I.more}</button>
@@ -110,8 +114,10 @@ const sectionHead = (title, link, linkText = 'See all') =>
   `<div class="sec-head"><h2>${esc(title)}</h2>${link ? `<a href="${link}">${esc(linkText)}</a>` : ''}</div>`;
 
 function liveStatus() {
-  if (state.liveOk) return '';
-  if (state.liveError) return `<div class="notice warn" data-testid="live-error">Couldn't reach Mixlr right now (${esc(state.liveError)}). You can browse the saved list, but playing needs a connection. <button class="link" data-act="check">Try again</button></div>`;
+  const partial = Object.keys(state.liveErrors || {});
+  if (state.liveOk && !partial.length) return '';
+  if (state.liveOk) return `<div class="notice warn" data-testid="live-partial">Couldn't reach ${esc(partial.map((k) => srcInfo(k).short).join(', '))} on Mixlr just now. Its messages are listed from the saved catalogue. <button class="link" data-act="check">Try again</button></div>`;
+  if (state.liveError) return `<div class="notice warn" data-testid="live-error">Couldn't reach Mixlr right now (${esc(state.liveError)}). Mixlr messages are listed from the saved catalogue and need a connection to play; podcast and SermonIndex messages stream from their own hosts. <button class="link" data-act="check">Try again</button></div>`;
   return `<div class="notice">Loading the latest list from Mixlr…</div>`;
 }
 
@@ -152,9 +158,31 @@ function vHome() {
   ${series.length ? `<section>${sectionHead('Series')}<div class="hscroll">${series.map((s) => `<a class="card" href="#/series/${slug(s.name)}" data-testid="series-card">${art(s.items[0], 'card-art')}<span class="card-title">${esc(s.name)}</span><span class="card-meta">${s.items.length} recording${s.items.length > 1 ? 's' : ''}</span></a>`).join('')}</div></section>` : ''}
   <section>${sectionHead('Browse by topic')}<p class="sub">Topics are auto-tagged from words in the titles only.</p>${catGrid()}</section>
   <section>${sectionHead('Latest uploads', '#/all', `All ${playable().length}`)}${list(latest)}</section>
+  ${sourceSections()}
   <a class="yt-banner" href="#/youtube">${I.yt}<span><b>${state.youtube.length} Saturday Bible Studies on YouTube</b><small>Opens in YouTube</small></span></a>
   ${footer()}`;
 }
+
+function sourceCounts() {
+  return SOURCES.map((s) => ({ s, n: playable().filter((it) => inSource(it, s.key)).length })).filter((x) => x.n);
+}
+function sourceSections() {
+  return sourceCounts().map(({ s, n }) => {
+    const items = playable().filter((it) => it.sourceKey === s.key && !it.genericTitle).slice(0, 10);
+    if (!items.length) return '';
+    const k = regList(items.map((x) => x.id));
+    return `<section data-testid="source-section" data-source="${esc(s.key)}">${sectionHead(s.short, '#/source/' + s.key, `All ${n}`)}
+      <p class="sub"><span class="lbl ${s.label}">${labelText(s.label)}</span> ${esc(s.name)}</p>
+      <div class="hscroll">${items.map((it, i) => card(it, k, i)).join('')}</div></section>`;
+  }).join('');
+}
+
+let srcFilter = store.get('srcFilter', 'all');
+function sourceChips() {
+  const all = playable().length;
+  return `<div class="chips src-chips" data-testid="source-chips"><button class="chip ${srcFilter === 'all' ? 'on' : ''}" data-act="src-filter" data-v="all">All sources <small>${all}</small></button>${sourceCounts().map(({ s, n }) => `<button class="chip ${srcFilter === s.key ? 'on' : ''}" data-act="src-filter" data-v="${esc(s.key)}" data-testid="src-chip">${esc(s.short)} <small>${n}</small></button>`).join('')}</div>`;
+}
+const bySrc = (items) => (srcFilter === 'all' || !SOURCE_BY_KEY.has(srcFilter) ? items : items.filter((it) => inSource(it, srcFilter)));
 
 function catGrid() {
   const cats = [...CATEGORIES, UNCATEGORISED];
@@ -167,11 +195,12 @@ function footer() {
 
 function vAll() {
   const sort = store.get('allSort', 'new');
-  let items = playable().slice();
+  let items = bySrc(playable()).slice();
   if (sort === 'old') items.reverse();
   if (sort === 'az') items.sort((a, b) => a.title.localeCompare(b.title));
   return `${backHead('All messages')}
-    <p class="sub">${items.length} recordings from Living Seed Gboko's Mixlr channel${state.liveOk ? '' : ' (saved list – live check failed)'}. Every title is shown exactly as it appears on Mixlr; that is not everything Bro Gbile has ever preached.</p>
+    <p class="sub" data-testid="all-count">${items.length} messages${srcFilter !== 'all' && SOURCE_BY_KEY.has(srcFilter) ? ' from ' + esc(srcInfo(srcFilter).short) : ` from ${sourceCounts().length} public sources`}${state.liveOk ? '' : ' (saved list – live Mixlr check failed)'}. Every title is shown exactly as its source publishes it. This is not everything Bro Gbile has ever preached.</p>
+    ${sourceChips()}
     <div class="chips">${[['new', 'Newest'], ['old', 'Oldest'], ['az', 'A–Z']].map(([k, l]) => `<button class="chip ${sort === k ? 'on' : ''}" data-act="sort" data-v="${k}">${l}</button>`).join('')}</div>
     ${list(items)}${footer()}`;
 }
@@ -180,11 +209,12 @@ let searchQ = '';
 function vSearch() {
   return `<header class="top"><h1>Search</h1></header>
   <div class="search-box">${I.search}<input id="q" type="search" data-testid="search" placeholder="Title, topic, series or keyword" value="${esc(searchQ)}" autocomplete="off" enterkeyhint="search"></div>
+  ${sourceChips()}
   <div id="results">${searchResults()}</div>`;
 }
 function searchResults() {
   if (!normalise(searchQ)) return `<h2 class="h2">Browse by topic</h2>${catGrid()}`;
-  const hits = searchItems(playable(), searchQ);
+  const hits = searchItems(bySrc(playable()), searchQ);
   const yt = searchItems(state.youtube, searchQ);
   const series = seriesList().filter((s) => normalise(s.name).includes(normalise(searchQ)));
   return `${series.length ? `<h2 class="h2">Series</h2><div class="list">${series.map((s) => `<a class="row" href="#/series/${slug(s.name)}">${art(s.items[0])}<span class="row-text"><span class="row-title">${esc(s.name)}</span><span class="row-meta">Series · ${s.items.length}</span></span></a>`).join('')}</div>` : ''}
@@ -203,6 +233,8 @@ function vLibrary() {
   </div>
   ${pls.length ? '' : '<p class="empty">No playlists yet. Tap + to make one.</p>'}
   <button class="btn outline" data-act="new-pl">${I.plus}<span>New playlist</span></button>
+  <h2 class="h2">Browse by source</h2>
+  <div class="list">${sourceCounts().map(({ s, n }) => `<a class="row" href="#/source/${esc(s.key)}" data-testid="lib-source"><div class="art art-pl">${I.library}</div><span class="row-text"><span class="row-title">${esc(s.short)}</span><span class="row-meta"><span class="lbl ${s.label}">${s.label === 'official' ? 'Official' : 'Community'}</span> · ${n} message${n === 1 ? '' : 's'}</span></span></a>`).join('')}</div>
   ${footer()}`;
 }
 
@@ -240,7 +272,21 @@ function backHead(title) {
 function vSeries(s) {
   const found = seriesList().find((x) => slug(x.name) === s);
   if (!found) return `${backHead('Series')}<p class="empty">Series not found.</p>`;
-  return `${backHead(found.name)}<p class="sub">Grouped from the Mixlr titles. ${found.items.length} recording${found.items.length > 1 ? 's' : ''}.</p>${playBar(found.items.map((i) => i.id))}${list(found.items)}`;
+  return `${backHead(found.name)}<p class="sub">Grouped from the titles. ${found.items.length} recording${found.items.length > 1 ? 's' : ''}.</p>${playBar(found.items.map((i) => i.id))}${list(found.items)}`;
+}
+
+function vSource(key) {
+  const s = SOURCE_BY_KEY.get(key);
+  if (!s) return `${backHead('Source')}<p class="empty">Unknown source.</p>`;
+  const items = playable().filter((it) => inSource(it, key));
+  const info = state.sources[key] || {};
+  const how = s.type === 'mixlr' ? 'Live Mixlr channel. Links are fetched fresh from Mixlr each time you play.'
+    : s.type === 'podcast' ? 'Podcast feed. Audio streams from the podcast host.' + (s.filter === 'gbile-only' ? ' Only episodes whose title clearly credits Bro Gbile Akanni are included.' : '')
+    : 'Sermon archive. Audio streams from SermonIndex\'s own file server. SermonIndex gives no real recording dates, so none are shown.';
+  return `${backHead(s.short)}
+  <p class="sub"><span class="lbl ${s.label}">${labelText(s.label)}</span> ${esc(s.name)}</p>
+  <p class="sub">${esc(how)} ${items.length} message${items.length === 1 ? '' : 's'}${info.ok === false ? ' (saved list; the last catalogue update could not reach this source)' : ''}.${s.home ? ` <a href="${esc(s.home)}" target="_blank" rel="noopener">Open source ${I.ext}</a>` : ''}</p>
+  ${items.length ? playBar(items.map((i) => i.id)) : ''}${list(items)}${footer()}`;
 }
 
 function vCategory(c) {
@@ -260,7 +306,7 @@ function vFeatured(id) {
 
 function vItem(id) {
   const it = state.byId.get(id);
-  if (!it) return `${backHead('Message')}<p class="empty">This message isn't in the library (it may have been removed from Mixlr).</p>`;
+  if (!it) return `${backHead('Message')}<p class="empty">This message isn't in the library (it may have been removed from its source).</p>`;
   if (it.kind === 'youtube') return `${backHead('YouTube')}${ytList([it])}`;
   const fav = store.favs.has(it.id);
   const p = store.progress.get(it.id);
@@ -278,7 +324,10 @@ function vItem(id) {
     <div class="playbar"><button class="btn primary" data-act="play" data-list="${k}" data-i="0" data-testid="detail-play">${I.play}<span>${p && p.pos ? 'Resume' : 'Play'}</span></button>
       <button class="icon-btn lg ${fav ? 'on' : ''}" data-act="fav" data-id="${esc(it.id)}" aria-label="${fav ? 'Remove from' : 'Add to'} favourites" data-testid="fav-btn">${fav ? I.heartFill : I.heart}</button>
       <button class="icon-btn lg" data-act="more" data-id="${esc(it.id)}" aria-label="More options">${I.more}</button></div>
-    <p class="sub">Source: ${esc(it.source)}${it.sourceUrl ? ` · <a href="${esc(it.sourceUrl)}" target="_blank" rel="noopener" data-testid="source-link">Open original ${I.ext}</a>` : ''}</p>
+    ${it.speaker ? `<p class="sub" data-testid="speaker">Speaker: ${esc(it.speaker)}</p>` : ''}
+    <p class="sub">Source: ${esc(it.source)}${it.label ? ` <span class="lbl ${it.label}">${it.label === 'official' ? 'Official' : 'Community'}</span>` : ''}${it.sourceUrl ? ` · <a href="${esc(it.sourceUrl)}" target="_blank" rel="noopener" data-testid="source-link">Open original ${I.ext}</a>` : ''}</p>
+    ${(it.alts || []).length ? `<div class="alts" data-testid="alts"><h2 class="h2">Also available from</h2>${it.alts.map((a) => `<p class="sub">${esc(a.source)}${a.title !== it.title ? ` – “${esc(a.title)}”` : ''}${a.sourceUrl ? ` · <a href="${esc(a.sourceUrl)}" target="_blank" rel="noopener">Open ${I.ext}</a>` : ''}</p>`).join('')}<p class="sub small">Matched as the same recording by title and length. If the main source fails, the player offers these.</p></div>` : ''}
+    ${it.youtube ? `<p class="sub" data-testid="also-yt">${I.yt} Also on YouTube: <a href="${esc(it.youtube.url)}" target="_blank" rel="noopener">${esc(it.youtube.title)} ${I.ext}</a></p>` : ''}
   </div>`;
 }
 
@@ -286,7 +335,8 @@ function ytList(items) {
   return `<div class="list">${items.map((v) => `<div class="row yt-row">
     <img class="art wide" src="https://i.ytimg.com/vi/${esc(v.videoId)}/mqdefault.jpg" alt="" loading="lazy">
     <span class="row-text"><span class="row-title">${esc(v.title)}</span><span class="row-meta">YouTube${v.length ? ' · ' + esc(v.length) : ''}</span></span>
-    <a class="btn ghost small" href="${esc(v.url)}" target="_blank" rel="noopener" data-testid="yt-open">Open on YouTube</a></div>`).join('')}</div>`;
+    <span class="yt-btns">${v.listenId && state.byId.has(v.listenId) ? `<button class="btn primary small" data-act="play-one" data-id="${esc(v.listenId)}" data-testid="yt-listen">${I.play}<span>Listen in app</span></button>` : ''}
+    <a class="btn ghost small" href="${esc(v.url)}" target="_blank" rel="noopener" data-testid="yt-open">Open on YouTube</a></span></div>`).join('')}</div>`;
 }
 
 let ytQ = '';
@@ -305,8 +355,11 @@ function vAbout() {
   return `${backHead('About Seedline')}
   <div class="prose">
   <p><b>Seedline</b> is an unofficial listening app for messages of Bro Gbile Akanni. It is <b>not</b> made by, run by or affiliated with Living Seed.</p>
-  <p>Audio plays straight from Living Seed Gboko's public Mixlr channel. Seedline doesn't copy or store any audio. Each message has a link to its original Mixlr page.</p>
-  <p>The library shows the ${state.items.length} recordings currently listed on that one Mixlr channel (very short test clips are skipped). It is <b>not</b> a complete collection of his teaching. Titles are shown exactly as they appear on Mixlr. Topics are auto-tagged only when a title contains a clear keyword.</p>
+  <p>Audio plays straight from each original public source, the way a podcast app does. Seedline doesn't download, copy or re-host any audio. Every message links to its original page.</p>
+  <p>The library has ${state.items.length} messages from these sources:</p>
+  <ul>${sourceCounts().map(({ s, n }) => `<li><b>${esc(s.short)}</b> – ${esc(s.name)} · ${s.label === 'official' ? 'official ministry channel' : 'community upload, unofficial'} · ${n}</li>`).join('')}</ul>
+  <p>When the same recording appears in more than one place, it is listed once and the other copies are kept as backups (official sources first). Matching is strict (same title and nearly the same length), so some duplicates may still show twice.</p>
+  <p>It is <b>not</b> a complete collection of his teaching. Titles are shown exactly as each source publishes them; the speaker is only named when the title or source says so. Topics are auto-tagged only when a title contains a clear keyword.</p>
   <p>Your favourites, playlists, queue and listening position are saved only on this device.</p>
   <p>Background play: on Android in Chrome (or when installed), audio keeps going with the screen locked and moves to the next message on its own. On iPhone, Safari may pause between messages.</p>
   <p>${esc(FOOTER)}</p></div>`;
@@ -328,6 +381,7 @@ function route() {
     case 'playlist': html = vPlaylist(arg); break;
     case 'series': html = vSeries(arg); break;
     case 'category': html = vCategory(arg); break;
+    case 'source': html = vSource(arg); break;
     case 'featured': html = vFeatured(arg); break;
     case 'item': html = vItem(arg); break;
     case 'youtube': if (qs) ytQ = new URLSearchParams(qs).get('q') || ytQ; html = vYouTube(); break;
@@ -337,6 +391,8 @@ function route() {
   }
   view.innerHTML = html;
   view.dataset.view = name;
+  const onChip = view.querySelector('.src-chips .chip.on');
+  if (onChip) onChip.parentElement.scrollLeft = Math.max(0, onChip.offsetLeft - onChip.parentElement.offsetLeft - 24);
   document.querySelectorAll('.nav a').forEach((a) => a.classList.toggle('on', a.dataset.nav === name || (a.dataset.nav === 'library' && ['favourites', 'playlist'].includes(name))));
   if (name === 'admin') renderAdmin($('#admin-root'), { esc, toast, dialog });
   return name;
@@ -374,7 +430,8 @@ function moreSheet(id) {
     <button data-act="add-pl" data-id="${esc(id)}" data-testid="add-to-playlist">${I.library}<span>Add to playlist</span></button>
     <a href="#/item/${encodeURIComponent(id)}" data-act="close">${I.info}<span>View details</span></a>
     ${it.series ? `<a href="#/series/${slug(it.series)}" data-act="close">${I.library}<span>Go to series</span></a>` : ''}
-    ${it.sourceUrl ? `<a href="${esc(it.sourceUrl)}" target="_blank" rel="noopener">${I.ext}<span>Open original on Mixlr</span></a>` : ''}`);
+    ${it.sourceUrl ? `<a href="${esc(it.sourceUrl)}" target="_blank" rel="noopener">${I.ext}<span>Open original (${esc(srcInfo(it.sourceKey).short)})</span></a>` : ''}
+    ${it.youtube ? `<a href="${esc(it.youtube.url)}" target="_blank" rel="noopener">${I.yt}<span>Also on YouTube</span></a>` : ''}`);
 }
 
 function playlistPicker(id) {
@@ -442,10 +499,17 @@ async function onAction(btn, e) {
     case 'close': closeSheet(); break;
     case 'back': if (history.length > 1) history.back(); else location.hash = '#/home'; break;
     case 'sort': store.set('allSort', btn.dataset.v); refreshView(); break;
+    case 'src-filter': {
+      srcFilter = btn.dataset.v; store.set('srcFilter', srcFilter);
+      if (view.dataset.view === 'search') { route(); const q = $('#q'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
+      else refreshView();
+      break;
+    }
+    case 'try-alt': player.tryAlt(); break;
     case 'seen-all': markAllSeen(); toast('Marked as seen'); break;
     case 'check': {
       btn.disabled = true;
-      toast('Checking Mixlr…');
+      toast('Checking the Mixlr channels…');
       const r = await checkLive();
       btn.disabled = false;
       if (!r.ok) toast("Couldn't reach Mixlr. Check your connection.");
@@ -508,7 +572,8 @@ function renderMini() {
   const d = audio.duration || it.duration || 0;
   const pct = d ? (audio.currentTime / d) * 100 : 0;
   m.innerHTML = `<div class="mini-in" data-act="open-full" data-testid="mini">
-    ${art(it)}<span class="row-text"><span class="row-title" data-testid="mini-title">${esc(it.title)}</span><span class="row-meta">${P.error ? `<em class="err">${esc(P.error)}</em>` : P.loading ? 'Loading…' : esc(it.series || it.source)}</span></span>
+    ${art(it)}<span class="row-text"><span class="row-title" data-testid="mini-title">${esc(it.title)}</span><span class="row-meta">${P.error ? `<em class="err" data-testid="mini-err">${esc(P.error)}</em>` : P.loading ? 'Loading…' : esc(it.series || srcInfo(it.sourceKey).short || it.source)}</span></span>
+    ${P.error && P.altOffer ? `<button class="btn primary small" data-act="try-alt" data-testid="try-alt">Try ${esc(P.altOffer.name)}</button>` : ''}
     <button class="icon-btn lg" data-act="toggle" aria-label="${playing ? 'Pause' : 'Play'}" data-testid="mini-toggle">${playing ? I.pause : I.play}</button>
     <button class="icon-btn" data-act="next" aria-label="Next">${I.next}</button></div>
     <div class="mini-prog"><i style="width:${pct.toFixed(2)}%"></i></div>`;
@@ -542,7 +607,7 @@ function renderFull() {
         <div class="vol">${I.vol}<input id="vol" type="range" min="0" max="1" step="0.05" aria-label="Volume"></div>
         <button class="icon-btn" data-act="fwd30" aria-label="Forward 30 seconds">${I.fwd30}</button></div>
       <p class="err-line" id="full-err"></p>
-      <div class="full-foot"><a href="${esc(it.sourceUrl || '#')}" target="_blank" rel="noopener">Source: ${esc(it.source)} ${I.ext}</a>
+      <div class="full-foot"><a href="${esc(it.sourceUrl || '#')}" target="_blank" rel="noopener"><span id="full-src">Source: ${esc(it.source)}</span> ${I.ext}</a>
         <button class="btn ghost small" data-act="open-queue" data-testid="open-queue">${I.queue}<span>Queue</span></button></div>
     </div>`;
   }
@@ -560,7 +625,10 @@ function renderFull() {
   $('#full-fav').innerHTML = fav ? I.heartFill : I.heart;
   $('#full-fav').classList.toggle('on', fav);
   const vol = $('#vol'); if (document.activeElement !== vol) vol.value = P.volume;
-  $('#full-err').textContent = P.error || (P.loading ? 'Loading…' : '');
+  $('#full-err').innerHTML = P.error ? `${esc(P.error)}${P.altOffer ? ` <button class="btn primary small" data-act="try-alt">Try ${esc(P.altOffer.name)}</button>` : ''}` : (P.loading ? 'Loading…' : '');
+  const ps = player.playingSource();
+  const sl = $('#full-src');
+  if (sl && ps) { sl.textContent = `Source: ${ps.source || it.source}`; sl.parentElement.href = ps.sourceUrl || '#'; }
 }
 function openFull() { const f = $('#full'); f.hidden = false; f.innerHTML = ''; renderFull(); document.body.classList.add('no-scroll'); }
 function closeFull() { $('#full').hidden = true; document.body.classList.remove('no-scroll'); }

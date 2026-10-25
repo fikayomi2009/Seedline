@@ -26,7 +26,9 @@ const browser = await chromium.launch({
   proxy,
   args: ['--autoplay-policy=no-user-gesture-required'],
 });
-const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+// Real phone user agent: Buzzsprout's CDN refuses the default "HeadlessChrome" UA (bot filter), but serves normal Chrome.
+const UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Mobile Safari/537.36';
+const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: UA });
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
@@ -52,13 +54,15 @@ async function waitAdvancing(min = 1.5) {
 await test('library loads from the live Mixlr API', async () => {
   await page.goto(BASE + '#/home');
   await waitFor(() => window.__seedline && window.__seedline.state.liveOk === true, null, 40000);
-  const n = await S(() => ({ items: window.__seedline.state.items.length, urls: Object.keys(window.__seedline.state.urls).length, yt: window.__seedline.state.youtube.length, inLive: window.__seedline.state.items.filter((i) => i.inLive).length }));
-  assert(n.items >= 80, 'too few items ' + n.items);
-  assert(n.urls >= 80, 'no fresh audio urls');
-  assert(n.inLive === n.items, 'some catalog items missing from live list');
+  const n = await S(() => { const st = window.__seedline.state; const mx = st.items.filter((i) => i.kind === 'mixlr'); const bySrc = {}; for (const i of st.items) bySrc[i.sourceKey] = (bySrc[i.sourceKey] || 0) + 1; return { items: st.items.length, mixlr: mx.length, urls: Object.keys(st.urls).length, yt: st.youtube.length, inLive: mx.filter((i) => i.inLive).length, bySrc, errs: st.liveErrors }; });
+  assert(n.items >= 400, 'too few items ' + n.items);
+  assert(n.urls >= 190, 'no fresh audio urls ' + n.urls);
+  assert(n.inLive === n.mixlr, 'some Mixlr catalog items missing from live lists');
+  assert(Object.keys(n.bySrc).length >= 7, 'sources missing ' + JSON.stringify(n.bySrc));
   const rows = await page.locator('[data-testid=row]').count();
-  assert(rows > 0, 'no rows rendered');
-  return `${n.items} recordings, ${n.urls} fresh audio URLs, ${n.yt} YouTube entries, ${rows} rows on Home`;
+  const secs = await page.locator('[data-testid=source-section]').count();
+  assert(rows > 0 && secs >= 6, `rows ${rows} source sections ${secs}`);
+  return `${n.items} messages (${JSON.stringify(n.bySrc)}), ${n.urls} fresh Mixlr URLs from 2 channels, ${n.yt} YouTube entries, ${secs} per-source sections on Home`;
 });
 
 await test('first run: nothing falsely marked New', async () => {
@@ -262,7 +266,7 @@ await test('listening progress persists across reload and resumes', async () => 
 });
 
 await test('expired audio link is refreshed automatically', async () => {
-  const id = await S(() => window.__seedline.state.items[6].id);
+  const id = await S(() => window.__seedline.state.items.filter((i) => i.kind === 'mixlr')[6].id);
   await S((i) => { window.__seedline.state.urls[i] = window.__seedline.state.urls[i].replace(/X-Amz-Signature=[0-9a-f]+/, 'X-Amz-Signature=' + '0'.repeat(64)); }, id);
   await S((i) => window.__seedline.player.playId(i), id);
   const s = await waitAdvancing(1);
@@ -325,25 +329,136 @@ await test('service worker registers and manifest is valid', async () => {
 
 
 await test('Mixlr unreachable: saved list still shows, honest error, no fake playback', async () => {
-  const c2 = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const c2 = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: UA });
   await c2.route(/apicdn\.mixlr\.com|api\.mixlr\.com/, (r) => r.abort());
   const p2 = await c2.newPage();
   await p2.goto(BASE + '#/home');
   await p2.waitForSelector('[data-testid=live-error]', { timeout: 20000 });
   const n = await p2.evaluate(() => window.__seedline.state.items.length);
-  await p2.goto(BASE + '#/all');
-  await p2.locator('[data-testid=row] .row-main').first().click();
+  const mxId = await p2.evaluate(() => window.__seedline.state.items.find((i) => i.kind === 'mixlr' && !(i.alts || []).length).id);
+  await p2.evaluate((i) => window.__seedline.player.playId(i), mxId);
   await p2.waitForFunction(() => !!window.__seedline.P.error, null, { timeout: 20000 });
   const err = await p2.evaluate(() => window.__seedline.P.error);
   const playing = await p2.evaluate(() => !window.__seedline.audio.paused);
+  // podcast audio is not on Mixlr, so it still plays
+  const podId = await p2.evaluate(() => window.__seedline.state.items.find((i) => i.kind === 'podcast').id);
+  await p2.evaluate((i) => window.__seedline.player.playId(i), podId);
+  await p2.waitForFunction(() => { const a = window.__seedline.audio; return !a.paused && a.currentTime > 1; }, null, { timeout: 45000 });
   await c2.close();
-  assert(n >= 80 && !playing, 'bad offline state');
-  return `${n} saved titles listed; playing shows: "${err}"`;
+  assert(n >= 400 && !playing, 'bad offline state');
+  return `${n} saved titles listed; Mixlr message shows: "${err}"; a podcast message still plays (${podId})`;
 });
+
+await test('one message from EVERY source plays (currentTime advances)', async () => {
+  await page.goto(BASE + '#/home');
+  await waitFor(() => window.__seedline && window.__seedline.state.liveOk, null, 40000);
+  const picks = await S(() => { const out = {}; for (const i of window.__seedline.state.items) if (!out[i.sourceKey] && !i.genericTitle) out[i.sourceKey] = i.id; return out; });
+  const done = [];
+  for (const [key, id] of Object.entries(picks)) {
+    await S((i) => { window.__seedline.store.progress.clear(i); window.__seedline.audio.pause(); return window.__seedline.player.playId(i); }, id);
+    await waitFor((i) => { const P = window.__seedline.P, a = window.__seedline.audio; return P.loadedId === i && !a.paused && a.currentTime > 1.5; }, id, 45000);
+    const s = await audioState();
+    const host = await S(() => new URL(window.__seedline.audio.currentSrc).host);
+    assert(s.id === id && !s.err, `${key} failed: ${s.err}`);
+    done.push(`${key}: ${id} @${s.t.toFixed(1)}s from ${host}`);
+  }
+  await S(() => window.__seedline.audio.pause());
+  assert(done.length >= 8, 'not all sources: ' + done.length);
+  return done.join(' | ');
+});
+
+await test('dedupe: duplicates listed once, alternates shown on the detail page', async () => {
+  const d = await S(() => { const st = window.__seedline.state; const main = new Set(st.items.map((i) => i.id)); const withAlts = st.items.filter((i) => (i.alts || []).length); const altIds = withAlts.flatMap((i) => i.alts.map((a) => a.id)); return { withAlts: withAlts.length, altIds: altIds.length, leaked: altIds.filter((a) => main.has(a)), first: withAlts[0] && withAlts[0].id }; });
+  assert(d.withAlts >= 3 && d.leaked.length === 0, JSON.stringify(d));
+  await page.goto(BASE + '#/item/' + encodeURIComponent(d.first));
+  await page.waitForSelector('[data-testid=alts]');
+  const t = await page.locator('[data-testid=alts]').innerText();
+  return `${d.withAlts} messages carry ${d.altIds} alternate copies; none listed twice; detail shows: ${t.split('\n').slice(0, 2).join(' / ')}`;
+});
+
+await test('player: failing static URL shows an honest error and offers the alternate source', async () => {
+  const id = await S(() => window.__seedline.state.items.find((i) => i.kind !== 'mixlr' && (i.alts || []).length).id);
+  await S((i) => { const it = window.__seedline.state.byId.get(i); it._realUrl = it.audioUrl; it.audioUrl = 'https://sermonindex1.b-cdn.net/0/SID0-does-not-exist.mp3'; }, id);
+  await S((i) => { window.__seedline.store.progress.clear(i); return window.__seedline.player.playId(i); }, id);
+  await waitFor(() => !!window.__seedline.P.error && !!window.__seedline.P.altOffer, null, 30000);
+  const err = await S(() => ({ e: window.__seedline.P.error, alt: window.__seedline.P.altOffer.name }));
+  await page.click('[data-testid=try-alt]');
+  const s = await waitAdvancing(1.5);
+  const src = await S(() => window.__seedline.player.playingSource().sourceKey);
+  await S((i) => { const it = window.__seedline.state.byId.get(i); it.audioUrl = it._realUrl; window.__seedline.audio.pause(); }, id);
+  assert(s.id === id && src !== (await S((i) => window.__seedline.state.byId.get(i).sourceKey, id)), 'did not switch source');
+  return `error shown: "${err.e}" → tapped "Try ${err.alt}" → playing from ${src} at ${s.t.toFixed(1)}s`;
+});
+
+await test('source filter chips (All messages + Search)', async () => {
+  await page.goto(BASE + '#/all');
+  const expect = await S(() => window.__seedline.state.items.filter((i) => i.sourceKey === 'sermonindex' || (i.alts || []).some((a) => a.sourceKey === 'sermonindex')).length);
+  await page.locator('[data-testid=src-chip]', { hasText: 'SermonIndex' }).click();
+  await page.waitForTimeout(200);
+  const rows = await page.locator('[data-testid=row]').count();
+  const badges = await page.locator('[data-testid=row] [data-testid=src-badge]').allInnerTexts();
+  const nonSi = await page.locator('[data-testid=row]').evaluateAll((els) => els.filter((e) => { const it = window.__seedline.state.byId.get(e.dataset.id); return !(it.sourceKey === 'sermonindex' || (it.alts || []).some((a) => a.sourceKey === 'sermonindex')); }).length);
+  assert(rows === expect && nonSi === 0, `rows ${rows} expected ${expect}, wrong ${nonSi}`);
+  await page.goto(BASE + '#/search');
+  await page.fill('[data-testid=search]', 'marriage');
+  const nSi = parseInt(await page.locator('[data-testid=result-count]').innerText());
+  await page.locator('[data-testid=source-chips] .chip').first().click(); // All sources
+  await page.waitForTimeout(150);
+  await page.fill('[data-testid=search]', 'marriage');
+  const nAll = parseInt(await page.locator('[data-testid=result-count]').innerText());
+  await page.locator('[data-testid=src-chip]', { hasText: 'Peace House Abuja' }).click();
+  await page.waitForTimeout(150);
+  const nAbj = parseInt(await page.locator('[data-testid=result-count]').innerText());
+  const kept = await page.inputValue('[data-testid=search]');
+  await page.locator('[data-testid=source-chips] .chip').first().click();
+  assert(nAll >= nSi && nAll >= nAbj && nAll > 0 && kept === 'marriage', `all ${nAll} si ${nSi} abuja ${nAbj}`);
+  return `SermonIndex chip → ${rows} rows (badges e.g. ${badges.slice(0, 1)}), none from other sources; search "marriage": all ${nAll}, SermonIndex ${nSi}, Peace House Abuja ${nAbj}`;
+});
+
+await test('auto-advance across sources (podcast → SermonIndex → Mixlr Abuja)', async () => {
+  const ids = await S(() => { const st = window.__seedline.state.items; return [st.find((i) => i.sourceKey === 'pod-temi'), st.find((i) => i.sourceKey === 'sermonindex'), st.find((i) => i.sourceKey === 'ph-abuja' && !i.genericTitle)].map((i) => i.id); });
+  for (const i of ids) await S((x) => window.__seedline.store.progress.clear(x), i);
+  await S((q) => window.__seedline.player.playQueue(q, 0), ids);
+  await waitAdvancing(1);
+  const seen = [ids[0]];
+  for (let k = 1; k < 3; k++) {
+    await S(() => { const a = window.__seedline.audio; a.currentTime = a.duration - 2; });
+    await waitFor((id) => { const P = window.__seedline.P; return P.queue[P.index] === id; }, ids[k], 40000);
+    const s = await waitAdvancing(1);
+    assert(s.id === ids[k], 'wrong next');
+    seen.push(`${s.id}@${s.t.toFixed(1)}s`);
+  }
+  await S(() => window.__seedline.audio.pause());
+  return seen.join(' → ');
+});
+
+await test('YouTube: matched entries offer "Listen in app"', async () => {
+  const m = await S(() => window.__seedline.state.youtube.filter((v) => v.listenId));
+  assert(m.length >= 1, 'no matches');
+  await page.goto(BASE + '#/youtube');
+  await page.fill('#ytq', m[0].title);
+  await page.waitForTimeout(150);
+  await page.locator('[data-testid=yt-listen]').first().click();
+  const s = await waitAdvancing(1);
+  assert(s.id === m[0].listenId, 'played ' + s.id);
+  await page.goto(BASE + '#/item/' + encodeURIComponent(m[0].listenId));
+  const also = await page.locator('[data-testid=also-yt]').innerText();
+  await S(() => window.__seedline.audio.pause());
+  return `${m.length} YouTube video(s) matched; "${m[0].title}" → plays ${s.id}; detail shows "${also.trim().slice(0, 60)}"`;
+});
+
 
 await page.goto(BASE + '#/home');
 await page.waitForTimeout(1500);
 await page.screenshot({ path: 'tests/screen-home.png', fullPage: false });
+await page.evaluate(() => { const s = document.querySelector('[data-testid=source-section]'); s && s.scrollIntoView(); });
+await page.waitForTimeout(800);
+await page.screenshot({ path: 'tests/screen-sources.png' });
+await page.goto(BASE + '#/all');
+await page.locator('[data-testid=src-chip]', { hasText: 'Community podcast' }).click();
+await page.waitForTimeout(800);
+await page.screenshot({ path: 'tests/screen-filter.png' });
+await page.locator('[data-testid=source-chips] .chip').first().click();
 await page.goto(BASE + '#/all');
 await page.locator('[data-testid=row] .row-main').first().click();
 await page.waitForTimeout(1500);

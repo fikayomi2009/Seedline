@@ -1,5 +1,5 @@
 // Library data: static catalog + live Mixlr API + optional admin (Supabase) data.
-import { MIXLR_LIST_URL, mergeLibrary, applyOverrides, diffNew, isPlayableRecording } from './logic.js';
+import { MIXLR_SOURCES, SOURCE_BY_KEY, mixlrListUrl, mixlrSourceForId, mergeLibrary, applyOverrides, diffNew, isPlayableRecording } from './logic.js';
 import * as store from './store.js';
 import { getSupabase } from './supa.js';
 
@@ -9,8 +9,10 @@ export const state = {
   urls: {},           // id -> fresh signed audio URL (never persisted)
   youtube: [],
   featured: [],       // admin featured playlists (Supabase)
-  liveOk: false,      // did the live Mixlr API answer?
+  liveOk: false,      // did the live Mixlr API answer (at least one channel)?
   liveError: null,
+  liveErrors: {},     // source key -> error text, for channels that failed
+  sources: {},        // per-source info from catalog.json
   liveCheckedAt: null,
   newIds: [],
   adminData: false,
@@ -29,20 +31,27 @@ async function fetchJSON(url, opts) {
   return r.json();
 }
 
-// Fetch every page of recordings from the public Mixlr API.
-export async function fetchLiveRecordings() {
+// Fetch every page of recordings of one Mixlr channel from the public API. Each record is tagged with its source.
+export async function fetchLiveRecordings(src = MIXLR_SOURCES[0]) {
   const all = [];
-  let url = MIXLR_LIST_URL;
+  let url = mixlrListUrl(src.channel);
   let guard = 0;
-  while (url && guard++ < 20) {
+  while (url && guard++ < 40) {
     const j = await fetchJSON(url, { cache: 'no-store' });
-    all.push(...(j.data || []));
+    for (const r of j.data || []) { r._source = src.key; all.push(r); }
     url = j.links && j.links.next ? j.links.next.replace('https://api.mixlr.com/', 'https://apicdn.mixlr.com/') : null;
   }
   return all;
 }
 
-function rebuild(live) {
+const liveBySource = {}; // source key -> last live recordings
+function liveAll() {
+  const keys = Object.keys(liveBySource);
+  return keys.length ? keys.flatMap((k) => liveBySource[k]) : null;
+}
+
+function rebuild() {
+  const live = liveAll();
   const { items, urls } = mergeLibrary(catalog, live || []);
   if (live) Object.assign(state.urls, urls);
   state.items = applyOverrides(items, overrides);
@@ -50,49 +59,68 @@ function rebuild(live) {
   for (const y of state.youtube) state.byId.set(y.id, y);
 }
 
-let lastLive = null;
-
 export async function loadLibrary() {
   const [cat, yt] = await Promise.all([
     fetchJSON('./catalog.json').catch(() => ({ items: [] })),
     fetchJSON('./youtube.json').catch(() => ({ items: [] })),
   ]);
   catalog = cat.items || [];
+  state.sources = cat.sources || {};
   state.youtube = yt.items || [];
-  rebuild(null);
+  rebuild();
   emit();
   loadAdminData(); // optional, in background
   await checkLive();
 }
 
-// Fetch the live list; update URLs and the "new" list. Returns { ok, newIds, error }.
+// Fetch the live lists of every Mixlr channel; update URLs and the "new" list. Returns { ok, newIds, error }.
 export async function checkLive() {
-  try {
-    const live = await fetchLiveRecordings();
-    lastLive = live;
-    state.liveOk = true;
-    state.liveError = null;
-    state.liveCheckedAt = Date.now();
-    rebuild(live);
-    const liveIds = live.filter(isPlayableRecording).map((r) => 'mx:' + r.id);
-    const lastSeen = store.get('lastSeenIds', null);
-    const { newIds, seen, firstRun } = diffNew(liveIds, lastSeen);
-    if (firstRun) store.set('lastSeenIds', seen);
-    // keep earlier un-dismissed "new" ids too
-    const pending = new Set([...store.get('pendingNew', []), ...newIds]);
-    state.newIds = [...pending].filter((id) => state.byId.has(id));
-    store.set('pendingNew', state.newIds);
-    store.set('lastCheck', state.liveCheckedAt);
-    emit();
-    return { ok: true, newIds: state.newIds, fresh: newIds, firstRun };
-  } catch (e) {
-    console.warn('Live Mixlr fetch failed', e);
+  const res = await Promise.allSettled(MIXLR_SOURCES.map((s) => fetchLiveRecordings(s)));
+  const okKeys = [];
+  state.liveErrors = {};
+  res.forEach((r, i) => {
+    const key = MIXLR_SOURCES[i].key;
+    if (r.status === 'fulfilled') { liveBySource[key] = r.value; okKeys.push(key); }
+    else state.liveErrors[key] = String((r.reason && r.reason.message) || r.reason);
+  });
+  if (!okKeys.length) {
+    console.warn('Live Mixlr fetch failed', state.liveErrors);
     state.liveOk = false;
-    state.liveError = String(e.message || e);
+    state.liveError = Object.values(state.liveErrors)[0] || 'unknown error';
     state.newIds = store.get('pendingNew', []).filter((id) => state.byId.has(id));
     emit();
     return { ok: false, error: state.liveError, newIds: state.newIds };
   }
+  state.liveOk = true;
+  state.liveError = null;
+  state.liveCheckedAt = Date.now();
+  rebuild();
+  let lastSeen = store.get('lastSeenIds', null);
+  // A channel added after the user's first visit: treat its whole back catalogue as already seen.
+  let seenSources = store.get('seenSources', null);
+  if (!seenSources) seenSources = Array.isArray(lastSeen) ? ['ls-gboko'] : [];
+  const newIds = [];
+  let firstRun = false;
+  for (const key of okKeys) {
+    const src = SOURCE_BY_KEY.get(key);
+    const ids = liveBySource[key].filter(isPlayableRecording).map((r) => src.idPrefix + r.id);
+    if (!seenSources.includes(key) || !Array.isArray(lastSeen)) {
+      if (!Array.isArray(lastSeen)) firstRun = true;
+      lastSeen = [...new Set([...(lastSeen || []), ...ids])];
+      if (!seenSources.includes(key)) seenSources.push(key);
+      continue;
+    }
+    newIds.push(...diffNew(ids, lastSeen).newIds);
+  }
+  store.set('lastSeenIds', lastSeen);
+  store.set('seenSources', seenSources);
+  // keep earlier un-dismissed "new" ids too
+  const pending = new Set([...store.get('pendingNew', []), ...newIds]);
+  state.newIds = [...pending].filter((id) => state.byId.has(id));
+  store.set('pendingNew', state.newIds);
+  store.set('lastCheck', state.liveCheckedAt);
+  emit();
+  return { ok: true, newIds: state.newIds, fresh: newIds, firstRun, partial: Object.keys(state.liveErrors) };
 }
 
 // Mark everything currently listed as seen (clears the New badge).
@@ -114,21 +142,26 @@ export function markSeen(id) {
   emit();
 }
 
-// Signed Mixlr links expire (about 7 days). Get a fresh one.
+// Signed Mixlr links expire (about 7 days). Get a fresh one from the channel that owns this id.
 export async function refreshUrl(id) {
-  const live = await fetchLiveRecordings();
-  lastLive = live;
-  rebuild(live);
+  const src = mixlrSourceForId(id) || MIXLR_SOURCES[0];
+  liveBySource[src.key] = await fetchLiveRecordings(src);
+  rebuild();
   state.liveOk = true;
   emit();
   return state.urls[id] || null;
 }
 
-export function audioUrlFor(item) {
-  if (!item) return null;
-  if (item.kind === 'admin') return item.audioUrl || null;
-  return state.urls[item.id] || null;
+// Where an entry (or one of its alternates) streams from.
+// Podcast / SermonIndex: the publisher's own static file URL. Mixlr: a fresh signed link.
+export function audioUrlFor(item, alt = null) {
+  const x = alt || item;
+  if (!x) return null;
+  if (x.audioUrl && x.sourceType !== 'mixlr') return x.audioUrl;
+  if (item && item.kind === 'admin' && !alt) return item.audioUrl || null;
+  return state.urls[x.id] || null;
 }
+export const isMixlrRef = (x) => !!x && (x.sourceType === 'mixlr' || x.kind === 'mixlr');
 
 // ---- Optional Supabase admin data ----
 export async function loadAdminData() {
@@ -143,7 +176,7 @@ export async function loadAdminData() {
     overrides = m.data || [];
     state.featured = (f.data || []).filter((p) => !p.hidden);
     state.adminData = true;
-    rebuild(lastLive);
+    rebuild();
     emit();
   } catch (e) {
     console.warn('Admin data not loaded', e);

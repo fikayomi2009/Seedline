@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Unofficial listening app for messages streamed from Living Seed Gboko's public Mixlr channel.",
+  "description": "Unofficial listening app for Bro Gbile Akanni messages, streamed from their original public sources (Mixlr, podcasts, SermonIndex).",
   "scripts": {
     "test:unit": "node tests/unit.test.mjs",
     "test:e2e": "node tests/e2e.test.mjs",

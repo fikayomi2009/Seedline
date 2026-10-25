@@ -1,7 +1,7 @@
 {
   "name": "Seedline (unofficial)",
   "short_name": "Seedline",
-  "description": "Unofficial listening app for messages streamed from Living Seed Gboko's public Mixlr channel.",
+  "description": "Unofficial listening app for Bro Gbile Akanni messages, streamed from their original public sources (Mixlr, podcasts, SermonIndex).",
   "start_url": "./#/home",
   "scope": "./",
   "display": "standalone",

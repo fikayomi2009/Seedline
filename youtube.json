@@ -1,5 +1,5 @@
 {
- "note": "Saturday Bible Study videos on YouTube (real titles). Opened on YouTube, not played in-app.",
+ "note": "Saturday Bible Study videos on YouTube (real titles). Opened on YouTube, never played or ripped in-app. listenId = the same message as audio in Seedline (conservative title match).",
  "items": [
   {
    "id": "yt:y55wT9DAysg",
@@ -2366,7 +2366,8 @@
    "url": "https://www.youtube.com/watch?v=PHvQ5IsfnJA",
    "length": "1h 52m",
    "duration": 6720,
-   "kind": "youtube"
+   "kind": "youtube",
+   "listenId": "mx:2552216"
   },
   {
    "id": "yt:guDruU-ZzNk",
