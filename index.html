@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Seedline – unofficial listening app</title>
+<meta name="description" content="Unofficial listening app for messages streamed from Living Seed Gboko's public Mixlr channel.">
+<meta name="theme-color" content="#0e0f12">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="preconnect" href="https://apicdn.mixlr.com">
+<link rel="preconnect" href="https://imagescdn.mixlr.com">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<main id="view" class="view"><p class="sub" style="padding:24px">Loading Seedline…</p></main>
+
+<div id="mini" class="mini" hidden></div>
+
+<nav class="nav" aria-label="Main">
+  <a href="#/home" data-nav="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a>
+  <a href="#/search" data-nav="search" data-testid="nav-search"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.96 12.06l4.24 4.23-1.42 1.42-4.23-4.24A7.5 7.5 0 1 1 10.5 3zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z"/></svg><span>Search</span></a>
+  <a href="#/library" data-nav="library" data-testid="nav-library"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h2v18H4zm5 0h2v18H9zm4.3 1.2 1.9-.6 5.5 17.1-1.9.6z"/></svg><span>Library</span></a>
+  <a href="#/youtube" data-nav="youtube"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.8 1.8c1.6.4 7.8.4 7.8.4s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8zM10 15V9l5.2 3z"/></svg><span>YouTube</span></a>
+</nav>
+
+<section id="full" class="full" hidden aria-label="Player"></section>
+<section id="queue" class="queue" hidden aria-label="Queue"></section>
+<div id="sheet" class="sheet" hidden><div class="sheet-body" role="menu"></div></div>
+<div id="modal" class="modal" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<noscript><p style="padding:24px;color:#fff">Seedline needs JavaScript turned on.</p></noscript>
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>
