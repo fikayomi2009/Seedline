@@ -1,0 +1,125 @@
+{
+  "ranAt": "2026-10-25T18:45:45.852Z",
+  "browser": "156.0.8078.47",
+  "results": [
+    {
+      "name": "library loads from the live Mixlr API",
+      "ok": true,
+      "info": "87 recordings, 87 fresh audio URLs, 312 YouTube entries, 8 rows on Home",
+      "ms": 1919
+    },
+    {
+      "name": "first run: nothing falsely marked New",
+      "ok": true,
+      "info": "No new messages since your last check (checked 06:45 PM).",
+      "ms": 6
+    },
+    {
+      "name": "search is instant and filters by title/topic/series",
+      "ok": true,
+      "info": "\"discipleship\" → 8 messages; \"MLR 2022\" → 4; nonsense → 0; YouTube links shown for last query: 0",
+      "ms": 97
+    },
+    {
+      "name": "play starts and audio currentTime advances (+Media Session metadata)",
+      "ok": true,
+      "info": "playing mx:2552216 at 2.1s of 7083s; mediaSession title ok, 2 artwork sizes, state=playing",
+      "ms": 2618
+    },
+    {
+      "name": "seek via full-player slider",
+      "ok": true,
+      "info": "jumped to 1201.2s and kept playing",
+      "ms": 1565
+    },
+    {
+      "name": "next / previous buttons",
+      "ok": true,
+      "info": "next → index 1 (mx:1959484); prev restarts then returns to mx:2552216 (resumed at 1201s from saved progress)",
+      "ms": 5635
+    },
+    {
+      "name": "ended → auto-advance to next message",
+      "ok": true,
+      "info": "mx:2552216 ended → mx:1959484 playing at 1.1s; finished item progress cleared: true",
+      "ms": 4768
+    },
+    {
+      "name": "repeat one replays the same message on end",
+      "ok": true,
+      "info": "same id mx:1959484 restarted at 0.1s; repeat cycled back to off",
+      "ms": 3101
+    },
+    {
+      "name": "shuffle keeps current track and reorders upcoming",
+      "ok": true,
+      "info": "upcoming 85 shuffled, order restored when turned off",
+      "ms": 101
+    },
+    {
+      "name": "queue view: reorder, remove, clear; add to queue / play next",
+      "ok": true,
+      "info": "reorder/remove/clear ok (current kept playing: true); add-to-queue and play-next ok",
+      "ms": 1330
+    },
+    {
+      "name": "playlist create / add / rename / reorder / remove / play / delete",
+      "ok": true,
+      "info": "all playlist operations work through the UI; whole playlist played in order",
+      "ms": 3052
+    },
+    {
+      "name": "favourites",
+      "ok": true,
+      "info": "favourited mx:1246470; listed in Favourites",
+      "ms": 83
+    },
+    {
+      "name": "listening progress persists across reload and resumes",
+      "ok": true,
+      "info": "saved 901s on pause; after reload it is first in Continue listening, mini player restored (\"LIVING SEED GBOKO's live audio…\"), resumed at 901s",
+      "ms": 4117
+    },
+    {
+      "name": "expired audio link is refreshed automatically",
+      "ok": true,
+      "info": "bad-signature URL failed (403), app fetched a fresh link from Mixlr and played",
+      "ms": 1806
+    },
+    {
+      "name": "discover new: id removed from last-seen shows as New, mark seen clears it",
+      "ok": true,
+      "info": "mx:2552216 shown as New with badge (1); stays after \"Check for new messages\"; cleared by \"Mark all as seen\"",
+      "ms": 3204
+    },
+    {
+      "name": "admin page says not configured",
+      "ok": true,
+      "info": "Not configured yet — see SETUP.md",
+      "ms": 16
+    },
+    {
+      "name": "YouTube section lists videos with Open on YouTube links",
+      "ok": true,
+      "info": "312 entries; first link https://www.youtube.com/watch?v=y55wT9DAysg",
+      "ms": 64
+    },
+    {
+      "name": "service worker registers and manifest is valid",
+      "ok": true,
+      "info": "SW activated; 19 shell files cached; 0 audio/Mixlr responses cached",
+      "ms": 75
+    },
+    {
+      "name": "Mixlr unreachable: saved list still shows, honest error, no fake playback",
+      "ok": true,
+      "info": "87 saved titles listed; playing shows: \"Could not get the audio link from Mixlr right now. Check your connection and try again.\"",
+      "ms": 811
+    },
+    {
+      "name": "no uncaught page errors",
+      "ok": true,
+      "info": ""
+    }
+  ]
+}
