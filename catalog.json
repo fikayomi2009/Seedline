@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-25T19:58:30.592Z",
+ "generatedAt": "2026-10-26T05:01:46.547Z",
  "note": "Titles exactly as published by each source. Categories are auto-tagged from title keywords only. Audio streams from the original host: podcast/SermonIndex URLs are the publishers' own; Mixlr links expire and are fetched fresh at runtime. Not a complete collection of Bro Gbile Akanni's teaching.",
  "sources": {
   "ls-gboko": {
@@ -224,6 +224,18 @@
    "episodesInFeed": 106,
    "skippedNotByHim": 105
   },
+  "pod-btfy": {
+   "name": "Gbile Akani: Battle For The Young (community podcast, unofficial)",
+   "type": "podcast",
+   "label": "community",
+   "home": "https://www.spreaker.com/show/4357837",
+   "feed": "https://www.spreaker.com/show/4357837/episodes/feed",
+   "ok": true,
+   "entries": 1,
+   "showTitle": "Gbile Akani : Battle For The Young",
+   "episodesInFeed": 1,
+   "skippedNotByHim": 0
+  },
   "sermonindex": {
    "name": "SermonIndex (third-party sermon archive)",
    "type": "sermonindex",
@@ -238,13 +250,13 @@
   }
  },
  "stats": {
-  "uniqueMessages": 422,
-  "rawEntries": 427,
+  "uniqueMessages": 423,
+  "rawEntries": 428,
   "mergedDuplicates": 5,
   "withAlternates": 5,
   "youtubeMatches": 1,
   "official": 195,
-  "community": 227,
+  "community": 228,
   "categories": {
    "Discipleship": 18,
    "Prayer": 19,
@@ -252,7 +264,7 @@
    "Revival": 3,
    "Faith": 9,
    "Christian Living": 46,
-   "Uncategorised": 325
+   "Uncategorised": 326
   },
   "bySource": {
    "ls-gboko": {
@@ -299,6 +311,13 @@
    },
    "pod-kgm": {
     "name": "Kingdom Grace Media podcast (community, unofficial)",
+    "type": "podcast",
+    "label": "community",
+    "entries": 1,
+    "shownAsMain": 1
+   },
+   "pod-btfy": {
+    "name": "Gbile Akani: Battle For The Young (community podcast, unofficial)",
     "type": "podcast",
     "label": "community",
     "entries": 1,
@@ -6253,6 +6272,31 @@
    "label": "official",
    "sourceUrl": "https://peacehouseabuja.mixlr.com/recordings/981059",
    "kind": "mixlr"
+  },
+  {
+   "id": "pod-btfy:c6214859fca1",
+   "title": "Battle for the young podcast part 1",
+   "genericTitle": false,
+   "speaker": "Bro Gbile Akanni (per podcast)",
+   "series": null,
+   "episode": null,
+   "subtitle": null,
+   "date": "2020-04-27",
+   "year": 2020,
+   "duration": 900,
+   "categories": [
+    "Uncategorised"
+   ],
+   "categorySource": "auto-tagged",
+   "artwork": "https://d3wo5wojvuv7l.cloudfront.net/t_rss_itunes_square_1400/images.spreaker.com/original/6857bed25e2dc60fce63547bc4f4462b.jpg",
+   "artworkLarge": "https://d3wo5wojvuv7l.cloudfront.net/t_rss_itunes_square_1400/images.spreaker.com/original/6857bed25e2dc60fce63547bc4f4462b.jpg",
+   "source": "Gbile Akani: Battle For The Young (community podcast, unofficial)",
+   "sourceKey": "pod-btfy",
+   "sourceType": "podcast",
+   "label": "community",
+   "sourceUrl": "https://www.spreaker.com/user/12401486/battle-for-the-young-podcast-part-1",
+   "audioUrl": "https://api.spreaker.com/download/episode/26210708/battle_for_the_young_podcast_part_1.mp3",
+   "kind": "podcast"
   },
   {
    "id": "mx:967742",
